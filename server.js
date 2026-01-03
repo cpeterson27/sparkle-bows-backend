@@ -1,0 +1,93 @@
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const http = require("http");
+const WebSocket = require("ws");
+require("dotenv").config();
+
+const app = express();
+
+app.use((req, res, next) => {
+  console.log('Incoming Request Headers:', req.headers);
+  next();
+});
+
+// CORS Configuration - MUST BE BEFORE ROUTES
+app.use(
+  cors({
+    origin: "http://localhost:3000", // Update to match your frontend port
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "User-Agent",
+      "Host",
+      "Connection",
+      "Accept-Encoding",
+      "Accept-Language",
+      "Cache-Control",
+      "Pragma",
+      "Upgrade-Insecure-Requests",
+      "Sec-Fetch-Dest",
+      "Sec-Fetch-Mode",
+      "Sec-Fetch-Site",
+      "Sec-Fetch-User",
+      "Sec-Ch-Ua",
+      "Sec-Ch-Ua-Mobile",
+      "Sec-Ch-Ua-Platform",
+      "Sec-Purpose",
+      "DNT",
+      "Upgrade",
+      "Referer",
+      "TE",
+      "If-Modified-Since",
+      "If-None-Match",
+      "If-Range",
+      "Range",
+    ],
+  })
+);
+
+// Body Parser Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+
+// Test route
+app.get("/api/health", (req, res) => {
+  res.json({ status: "OK", message: "Backend is running!" });
+});
+
+// Import routes
+const productRoutes = require("./routes/productRoutes");
+app.use("/api/products", productRoutes);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: "Something went wrong!" });
+});
+
+const PORT = 3001;
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server, path: "/ws" });
+
+wss.on("connection", (ws) => {
+  console.log("Client connected");
+  ws.on("close", () => console.log("Client disconnected"));
+});
+
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 CORS enabled for http://localhost:3000`);
+  console.log(`🚀 WebSocket server running on ws://localhost:${PORT}/ws`);
+});
