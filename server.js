@@ -12,10 +12,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS Configuration - MUST BE BEFORE ROUTES
+// CORS Configuration - FIXED FOR PRODUCTION
 app.use(
   cors({
-    origin: "http://localhost:3000", // Update to match your frontend port
+    origin: process.env.FRONTEND_URL || "http://localhost:3000", // Use env variable!
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [
@@ -76,7 +76,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Something went wrong!" });
 });
 
-const PORT = 3001;
+// FIXED: Use PORT from environment variable (Render provides this)
+const PORT = process.env.PORT || 3000;
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: "/ws" });
@@ -88,6 +89,6 @@ wss.on("connection", (ws) => {
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 CORS enabled for http://localhost:3000`);
+  console.log(`📡 CORS enabled for ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
   console.log(`🚀 WebSocket server running on ws://localhost:${PORT}/ws`);
 });
