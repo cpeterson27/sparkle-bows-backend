@@ -127,7 +127,7 @@ body {
 
 /* Background */
 .bg-white { background-color: white; }
-.bg-black\\/50 { background-color: rgba(0, 0, 0, 0.5); }
+.bg-black-50 { background-color: rgba(0, 0, 0, 0.5); }
 .bg-gradient-to-br {
   background-image: linear-gradient(to bottom right, #fce7f3, #f3e8ff, #dbeafe);
 }
@@ -150,8 +150,8 @@ body {
 .bg-green-500 { background-color: #22c55e; }
 .bg-gray-200 { background-color: #e5e7eb; }
 .bg-gray-500 { background-color: #6b7280; }
-.bg\\/80 { background-color: rgba(255, 255, 255, 0.8); }
-.bg\\/90 { background-color: rgba(255, 255, 255, 0.9); }
+.bg-80 { background-color: rgba(255, 255, 255, 0.8); }
+.bg-90 { background-color: rgba(255, 255, 255, 0.9); }
 
 /* Text Colors */
 .text-white { color: white; }
