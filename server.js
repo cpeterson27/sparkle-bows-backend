@@ -61,6 +61,18 @@ mongoose
   .then(() => console.log("✅ Connected to MongoDB"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
+// Root route for testing
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "Sparkle Bows Backend API",
+    status: "running",
+    endpoints: {
+      health: "/api/health",
+      products: "/api/products"
+    }
+  });
+});
+
 // Test route
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", message: "Backend is running!" });
