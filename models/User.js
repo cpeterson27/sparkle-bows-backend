@@ -18,33 +18,19 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     minlength: 6,
-    select: false // Don't return password by default
+    select: false
   },
-  address: {
-    type: String,
-    default: ''
-  },
-  city: {
-    type: String,
-    default: ''
-  },
-  state: {
-    type: String,
-    default: ''
-  },
-  zipCode: {
-    type: String,
-    default: ''
-  },
+  address: String,
+  city: String,
+  state: String,
+  zipCode: String,
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
 
-// Hash password before saving
 userSchema.pre('save', async function(next) {
-  // Only hash if password is modified
   if (!this.isModified('password')) return next();
   
   try {
@@ -56,9 +42,8 @@ userSchema.pre('save', async function(next) {
   }
 });
 
-// Method to compare passwords
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-module.exports = mongoose.model('User', userSchema);v
+module.exports = mongoose.model('User', userSchema);
