@@ -283,6 +283,11 @@ export default function App() {
             <Sparkles className="w-12 h-12 text-pink-500 mx-auto animate-spin" />
             <p className="text-pink-600 mt-4">Loading sparkly bows...</p>
           </div>
+        ) : error ? (
+          <div className="text-center text-red-600 bg-red-100 border border-red-300 rounded-lg p-6 my-8">
+            <p className="font-bold mb-2">Oops! Something went wrong:</p>
+            <p>{error}</p>
+            </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => (
@@ -391,6 +396,7 @@ export default function App() {
         <CartSidebar
           cart={cart}
           cartTotal={cartTotal}
+          cartItemCount={cartItemCount}
           onClose={() => setShowCart(false)}
           onUpdateQuantity={updateQuantity}
         />
