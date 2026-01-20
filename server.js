@@ -1,113 +1,129 @@
+// server.js
 require("dotenv").config();
-console.log("MONGODB_URI:", process.env.MONGODB_URI);
-
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
+const fs = require("fs");
 const http = require("http");
+const https = require("https");
 const WebSocket = require("ws");
+const mongoose = require("mongoose");
+const logger = require("./logger");
 
-const app = express();
+const app = require("./app"); // import the app
 
-app.use((req, res, next) => {
-  console.log('Incoming Request Headers:', req.headers);
-  next();
-});
-
-// CORS Configuration - FIXED FOR PRODUCTION
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-      "User-Agent",
-      "Host",
-      "Connection",
-      "Accept-Encoding",
-      "Accept-Language",
-      "Cache-Control",
-      "Pragma",
-      "Upgrade-Insecure-Requests",
-      "Sec-Fetch-Dest",
-      "Sec-Fetch-Mode",
-      "Sec-Fetch-Site",
-      "Sec-Fetch-User",
-      "Sec-Ch-Ua",
-      "Sec-Ch-Ua-Mobile",
-      "Sec-Ch-Ua-Platform",
-      "Sec-Purpose",
-      "DNT",
-      "Upgrade",
-      "Referer",
-      "TE",
-      "If-Modified-Since",
-      "If-None-Match",
-      "If-Range",
-      "Range",
-    ],
-  })
-);
-
-// Body Parser Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// MongoDB Connection
+// ------------------------------------
+// MONGODB CONNECTION
+// ------------------------------------
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
-
-// Root route for testing
-app.get("/", (req, res) => {
-  res.json({ 
-    message: "✨ Sparkle Bows Backend API ✨",
-    status: "running",
-    endpoints: {
-      health: "/api/health",
-      products: "/api/products",
-      auth: "/api/auth"
-    }
+  .then(() => {
+    logger.info("✅ MongoDB connected");
+    startServer();
+  })
+  .catch((err) => {
+    logger.error("❌ MongoDB connection error", { error: err.message });
+    process.exit(1);
   });
-});
 
-// Test route
-app.get("/api/health", (req, res) => {
-  res.json({ status: "OK", message: "Backend is running!" });
-});
+// ------------------------------------
+// SERVER START + WEBSOCKETS
+// ------------------------------------
+function startServer() {
+  const PORT = process.env.PORT || 3001;
+  const NODE_ENV = process.env.NODE_ENV || "development";
 
-// Import routes
-const authRoutes = require("./routes/auth");
-const productRoutes = require("./routes/productRoutes");
+  let server;
 
-// Use routes
-app.use("/api/auth", authRoutes);
-app.use("/api/products", productRoutes);
+  if (
+    NODE_ENV === "production" &&
+    process.env.SSL_KEY_PATH &&
+    process.env.SSL_CERT_PATH
+  ) {
+    const privateKey = fs.readFileSync(process.env.SSL_KEY_PATH, "utf8");
+    const certificate = fs.readFileSync(process.env.SSL_CERT_PATH, "utf8");
+    const credentials = { key: privateKey, cert: certificate };
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
-});
+    server = https.createServer(credentials, app);
+    logger.info("🔒 HTTPS server enabled");
+  } else {
+    server = http.createServer(app);
+    logger.info("⚠️ Running in HTTP mode (development)");
+  }
 
-// FIXED: Use PORT from environment variable
-const PORT = process.env.PORT || 3001;
+  // ------------------------------------
+  // WEBSOCKET SETUP
+  // ------------------------------------
+  const wss = new WebSocket.Server({ server, path: "/ws" });
 
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server, path: "/ws" });
+  wss.on("connection", (ws, req) => {
+    const clientIp = req.socket.remoteAddress;
+    logger.info("📡 WebSocket client connected", { ip: clientIp });
 
-wss.on("connection", (ws) => {
-  console.log("Client connected");
-  ws.on("close", () => console.log("Client disconnected"));
-});
+    ws.on("message", (message) => {
+      try {
+        const data = JSON.parse(message);
+        wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            client.send(message);
+          }
+        });
+      } catch (err) {
+        logger.error("WebSocket message error", { error: err.message });
+      }
+    });
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 CORS enabled for ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
-  console.log(`🚀 WebSocket server running on ws://localhost:${PORT}/ws`);
-});
+    ws.on("close", () => {
+      logger.info("📡 WebSocket client disconnected", { ip: clientIp });
+    });
+
+    ws.on("error", (err) => {
+      logger.error("WebSocket error", {
+        message: err.message,
+        stack: err.stack,
+        ip: clientIp,
+      });
+    });
+  });
+
+  server.listen(PORT, () => {
+    const protocol = NODE_ENV === "production" ? "https" : "http";
+    logger.info(`🚀 Server running on ${protocol}://localhost:${PORT}`);
+    logger.info(`📡 WebSocket server running on ws://localhost:${PORT}/ws`);
+    logger.info(`🌍 Environment: ${NODE_ENV}`);
+  });
+
+  // ------------------------------------
+  // GRACEFUL SHUTDOWN
+  // ------------------------------------
+  const gracefulShutdown = (signal) => {
+    logger.info(`${signal} received. Starting graceful shutdown...`);
+
+    server.close(() => {
+      logger.info("HTTP server closed");
+      wss.clients.forEach((client) => client.close());
+      wss.close(() => {
+        logger.info("WebSocket server closed");
+        process.exit(0);
+      });
+    });
+
+    setTimeout(() => {
+      logger.error("Could not close connections in time, forcefully shutting down");
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+  // ------------------------------------
+  // GLOBAL ERROR HANDLING
+  // ------------------------------------
+  process.on("uncaughtException", (err) => {
+    logger.error("Uncaught Exception", { error: err.message, stack: err.stack });
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason, promise) => {
+    logger.error("Unhandled Rejection", { reason, promise });
+    process.exit(1);
+  });
+}
