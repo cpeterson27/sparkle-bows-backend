@@ -1,33 +1,52 @@
-// middleware/rateLimit.js
+// middleware/rateLimit.js - PRODUCTION READY
 const rateLimit = require("express-rate-limit");
 
-// General API rate limiter - increased limits
+// General API rate limiter - reasonable limits for normal usage
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // ✅ INCREASED from 100 to 200 requests per window
-  message: "Too many requests from this IP, please try again later.",
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 100, // 100 requests per minute
+  message: "Too many requests, please slow down.",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for certain safe endpoints
+    return req.path.startsWith('/api/products') || 
+           req.path.startsWith('/api/reviews');
+  }
 });
 
-// Auth-specific rate limiter - more lenient for refresh token
+// Auth-specific rate limiter - prevent brute force
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // ✅ INCREASED from 5 to 20 requests per window
-  message: "Too many authentication attempts, please try again later.",
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true, // ✅ Don't count successful requests
-});
-
-// Refresh token limiter - very lenient since it's called often
-const refreshTokenLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // ✅ NEW: Allow 50 refresh token requests
-  message: "Too many refresh attempts, please try again later.",
+  max: 10, // 10 login attempts per 15 minutes
+  message: "Too many login attempts, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
 });
 
-module.exports = { generalLimiter, authLimiter, refreshTokenLimiter };
+// Refresh token limiter - very lenient
+const refreshTokenLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 20, // 20 refresh attempts per minute
+  message: "Too many refresh attempts.",
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
+
+// Cart limiter - separate from general API
+const cartLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // 30 cart updates per minute
+  message: "Too many cart updates.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+module.exports = { 
+  generalLimiter, 
+  authLimiter, 
+  refreshTokenLimiter,
+  cartLimiter 
+};

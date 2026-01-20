@@ -9,7 +9,7 @@ const cookieParser = require("cookie-parser");
 
 const logger = require("./logger");
 const morganMiddleware = require("./middleware/morganLogger");
-const { generalLimiter, authLimiter, refreshTokenLimiter } = require("./middleware/rateLimit");
+const { generalLimiter, authLimiter, refreshTokenLimiter, cartLimiter } = require("./middleware/rateLimit");
 
 // Import route modules
 const authRoutes = require("./routes/auth");
@@ -76,7 +76,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/uploads", uploadRoutes);
-app.use("/api/cart", cartRoutes);
+app.use("/api/cart", cartLimiter, cartRoutes); // ✅ Separate cart limiter
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/stripe", stripeRoutes);
