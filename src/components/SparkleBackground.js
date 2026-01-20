@@ -1,21 +1,33 @@
-import React from 'react';
-import { Sparkles } from 'lucide-react';
+import React, { useMemo } from "react";
+import { Sparkles } from "lucide-react";
 
 export default function SparkleBackground() {
+  const sparkles = useMemo(
+    () =>
+      Array.from({ length: 30 }).map((_, i) => ({
+        id: i,
+        left: Math.random() * 100,
+        top: Math.random() * 100,
+        delay: Math.random() * 3,
+        duration: 2 + Math.random() * 3,
+      })),
+    []
+  );
+
   return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {[...Array(30)].map((_, i) => (
+    <div className="fixed inset-0 pointer-events-none z-1 overflow-hidden">
+      {sparkles.map((s) => (
         <div
-          key={i}
+          key={s.id}
           className="absolute animate-pulse"
           style={{
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            animationDelay: `${Math.random() * 3}s`,
-            animationDuration: `${2 + Math.random() * 3}s`
+            left: `${s.left}%`,
+            top: `${s.top}%`,
+            animationDelay: `${s.delay}s`,
+            animationDuration: `${s.duration}s`,
           }}
         >
-          <Sparkles className="text-pink-300 w-4 h-4 opacity-60" />
+          <Sparkles className="w-4 h-4 text-pink-300 opacity-60" />
         </div>
       ))}
     </div>
