@@ -9,7 +9,7 @@ const cookieParser = require("cookie-parser");
 
 const logger = require("./logger");
 const morganMiddleware = require("./middleware/morganLogger");
-const { generalLimiter, authLimiter } = require("./middleware/rateLimit");
+const { generalLimiter, authLimiter, refreshTokenLimiter } = require("./middleware/rateLimit");
 
 // Import route modules
 const authRoutes = require("./routes/auth");
@@ -58,7 +58,7 @@ app.use(
 app.use("/api", generalLimiter);
 app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/refresh-token", authLimiter);
+app.use("/api/auth/refresh-token", refreshTokenLimiter); // ✅ Use separate limiter for refresh
 
 // ------------------------
 // BODY + COOKIE PARSING

@@ -3634,3 +3634,4 @@
 {"level":"info","message":"::1 - - [20/Jan/2026:21:42:33 +0000] \"PUT /api/cart HTTP/1.1\" 200 2 \"http://localhost:3000/\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36\"","timestamp":"2026-01-20 15:42:33"}
 {"level":"info","message":"::1 - - [20/Jan/2026:21:42:33 +0000] \"PUT /api/cart HTTP/1.1\" 200 2 \"http://localhost:3000/\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36\"","timestamp":"2026-01-20 15:42:33"}
 {"level":"info","message":"::1 - - [20/Jan/2026:21:42:33 +0000] \"PUT /api/cart HTTP/1.1\" 200 2 \"http://localhost:3000/\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36\"","timestamp":"2026-01-20 15:42:33"}
+{"level":"info","message":"SIGINT received. Starting graceful shutdown...","timestamp":"2026-01-20 15:51:05"}
