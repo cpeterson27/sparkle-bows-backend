@@ -6,7 +6,6 @@ const cors = require("cors");
 const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
 const cookieParser = require("cookie-parser");
-const path = require("path");
 
 const logger = require("./logger");
 const morganMiddleware = require("./middleware/morganLogger");
@@ -40,9 +39,13 @@ app.use(
   })
 );
 
+// ✅ FIXED: Allow both localhost and Render frontend
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: [
+      process.env.FRONTEND_URL || "http://localhost:3000",
+      "https://sparkle-bows-frontend.onrender.com"
+    ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -72,7 +75,7 @@ app.use(morganMiddleware);
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/reviews", reviewRoutes);
-app.use("/api/uploads", uploadRoutes);   // upload must match frontend
+app.use("/api/uploads", uploadRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
@@ -89,15 +92,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ------------------------
-// SERVE STATIC FOR PRODUCTION
-// ------------------------
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "client/build")));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "client/build/index.html"));
-  });
-}
+// ✅ REMOVED: No static serving - frontend is deployed separately
 
 // ------------------------
 // 404 HANDLER
