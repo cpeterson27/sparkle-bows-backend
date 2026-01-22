@@ -1,17 +1,15 @@
 // app.js
 require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
 const cookieParser = require("cookie-parser");
-
 const logger = require("./logger");
 const morganMiddleware = require("./middleware/morganLogger");
 const { generalLimiter, authLimiter, refreshTokenLimiter, cartLimiter } = require("./middleware/rateLimit");
 
-// Import route modules
+// Routes
 const authRoutes = require("./routes/auth");
 const productRoutes = require("./routes/productRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
@@ -20,6 +18,8 @@ const cartRoutes = require("./routes/cart");
 const orderRoutes = require("./routes/orders");
 const adminRoutes = require("./routes/admin");
 const stripeRoutes = require("./routes/stripe");
+const stripeWebhookRoutes = require("./routes/stripeWebhook");
+const { router: expenseRoutes } = require("./routes/expenses");
 
 const app = express();
 
@@ -33,13 +33,12 @@ app.use(
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"], // allow cloud-hosted images
+        imgSrc: ["'self'", "data:", "https:"],
       },
     },
   })
 );
 
-// ✅ FIXED: Allow both localhost and Render frontend
 app.use(
   cors({
     origin: [
@@ -58,7 +57,8 @@ app.use(
 app.use("/api", generalLimiter);
 app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/refresh-token", refreshTokenLimiter); // ✅ Use separate limiter for refresh
+app.use("/api/auth/refresh-token", refreshTokenLimiter);
+app.use("/api/cart", cartLimiter);
 
 // ------------------------
 // BODY + COOKIE PARSING
@@ -76,10 +76,13 @@ app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/uploads", uploadRoutes);
-app.use("/api/cart", cartLimiter, cartRoutes); // ✅ Separate cart limiter
+app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/stripe", stripeRoutes);
+app.use("/api/stripe", stripeRoutes);           // PaymentIntent
+app.use("/api/stripe/webhook", stripeWebhookRoutes); // Webhook
+app.use("/api/expenses", expenseRoutes);
+app.use("/api/checkout", require("./routes/checkout"));
 
 // ------------------------
 // HEALTH CHECK
@@ -91,8 +94,6 @@ app.get("/api/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
-
-// ✅ REMOVED: No static serving - frontend is deployed separately
 
 // ------------------------
 // 404 HANDLER

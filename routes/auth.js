@@ -50,62 +50,48 @@ const cookieOptions = {
 // ------------------------------------
 // REGISTER / SIGNUP
 // ------------------------------------
+// ------------------------------------
+// REGISTER / SIGNUP
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password, address, city, state, zipCode } = req.body;
-
     if (!name || !email || !password) {
-      return res.status(400).json({
-        message: "Name, email, and password required",
-      });
+      return res.status(400).json({ message: "Name, email, and password required" });
     }
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return res.status(400).json({
-        message: "User with that email already exists",
-      });
+      return res.status(400).json({ message: "User already exists" });
     }
 
     const user = new User({
-      name,
-      email: email.toLowerCase(),
-      password,
-      address,
-      city,
-      state,
-      zipCode,
-      role: "user",
+      name, email: email.toLowerCase(), password,
+      address, city, state, zipCode,
+      role: "user"
     });
-
     await user.save();
 
     const accessToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
-
     await RefreshToken.create({ token: refreshToken, userId: user._id });
 
     res.cookie("refreshToken", refreshToken, cookieOptions);
 
     return res.status(201).json({
       message: "User registered successfully",
-      token: accessToken,
+      accessToken: accessToken,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
-        address: user.address,
-        city: user.city,
-        state: user.state,
-        zipCode: user.zipCode,
       },
     });
   } catch (error) {
-    logger.error("Registration error", { error: error.message });
     return res.status(500).json({ message: "Registration failed" });
   }
 });
+
 
 // ------------------------------------
 // LOGIN
@@ -113,30 +99,36 @@ router.post("/signup", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password required",
-      });
+      return res.status(400).json({ message: "Email and password required" });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
-    );
+    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
 
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const accessToken = createAccessToken(user);
-    const refreshToken = createRefreshToken(user);
+    // Create tokens
+    const accessToken = createAccessToken(user);      // short‑lived
+    const refreshToken = createRefreshToken(user);    // long‑lived
 
+    // Save refresh token in DB
     await RefreshToken.create({ token: refreshToken, userId: user._id });
 
-    res.cookie("refreshToken", refreshToken, cookieOptions);
+    // Set refresh token as HTTP‑only secure cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
 
+    // Send access token in response
     return res.json({
       message: "Login successful",
-      token: accessToken,
+      accessToken: accessToken,   // used by frontend to attach Authorization header
       user: {
         id: user._id,
         name: user.name,
@@ -145,10 +137,11 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error("Login error", { error: error.message });
+    console.error("Login error", error);
     return res.status(500).json({ message: "Login failed" });
   }
 });
+
 
 // ------------------------------------
 // REFRESH TOKEN
@@ -319,7 +312,7 @@ router.patch("/update-profile", verifyToken, async (req, res) => {
 
     return res.json({
       message: "Profile updated successfully",
-      token: newAccessToken,
+      token: accessToken,
       user: {
         id: user._id,
         name: user.name,

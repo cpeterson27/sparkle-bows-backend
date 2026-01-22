@@ -1,129 +1,117 @@
-// server.js
-require("dotenv").config();
-const fs = require("fs");
-const http = require("http");
-const https = require("https");
-const WebSocket = require("ws");
-const mongoose = require("mongoose");
-const logger = require("./logger");
+const express = require("express");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const Product = require("../models/productModel");
+const { optionalAuth } = require("../middleware/auth");
+const { calculateShipping } = require("../utils/shippingCalculator");
 
-const app = require("./app"); // import the app
+const router = express.Router();
 
-// ------------------------------------
-// MONGODB CONNECTION
-// ------------------------------------
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => {
-    logger.info("✅ MongoDB connected");
-    startServer();
-  })
-  .catch((err) => {
-    logger.error("❌ MongoDB connection error", { error: err.message });
-    process.exit(1);
-  });
+// ------------------------
+// CREATE PAYMENT INTENT
+// ------------------------
+router.post("/create-payment-intent", optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user?._id?.toString() || null;
+    let guestId = req.cookies?.guestId || null;
 
-// ------------------------------------
-// SERVER START + WEBSOCKETS
-// ------------------------------------
-function startServer() {
-  const PORT = process.env.PORT || 3001;
-  const NODE_ENV = process.env.NODE_ENV || "development";
+    // Generate guestId if neither logged-in nor cookie exists
+    if (!userId && !guestId) {
+      const newGuestId = Math.random().toString(36).substring(2, 15);
+      res.cookie("guestId", newGuestId, { httpOnly: true, sameSite: "lax" });
+      guestId = newGuestId;
+    }
 
-  let server;
+    const { items: frontendItems, customerName, customerEmail, shippingInfo } = req.body;
 
-  if (
-    NODE_ENV === "production" &&
-    process.env.SSL_KEY_PATH &&
-    process.env.SSL_CERT_PATH
-  ) {
-    const privateKey = fs.readFileSync(process.env.SSL_KEY_PATH, "utf8");
-    const certificate = fs.readFileSync(process.env.SSL_CERT_PATH, "utf8");
-    const credentials = { key: privateKey, cert: certificate };
+    if (!frontendItems || frontendItems.length === 0)
+      return res.status(400).json({ error: "No items to purchase" });
 
-    server = https.createServer(credentials, app);
-    logger.info("🔒 HTTPS server enabled");
-  } else {
-    server = http.createServer(app);
-    logger.info("⚠️ Running in HTTP mode (development)");
+    // ------------------------
+    // Validate items & calculate subtotal
+    // ------------------------
+    const validatedItems = [];
+    let subtotal = 0;
+
+    for (const item of frontendItems) {
+      const product = await Product.findById(item.productId);
+      if (!product) return res.status(400).json({ error: `Product not found: ${item.name}` });
+      if (item.quantity > product.inventory)
+        return res.status(400).json({ error: `Not enough stock for: ${product.name}` });
+
+      validatedItems.push({
+        productId: product._id.toString(),
+        name: product.name,
+        quantity: item.quantity,
+        price: product.price,
+      });
+
+      subtotal += product.price * item.quantity;
+    }
+
+    // ------------------------
+    // Calculate shipping server-side
+    // ------------------------
+    const totalItems = validatedItems.reduce((sum, i) => sum + i.quantity, 0);
+    const shippingCost = calculateShipping(subtotal, totalItems);
+    const totalAmount = subtotal + shippingCost;
+
+    // ------------------------
+    // Determine final shipping address
+    // ------------------------
+    let finalShipping;
+    if (shippingInfo) {
+      finalShipping = {
+        name: shippingInfo.name,
+        address: {
+          line1: shippingInfo.line1,
+          line2: shippingInfo.line2 || "",
+          city: shippingInfo.city,
+          state: shippingInfo.state,
+          postal_code: shippingInfo.postalCode,
+          country: shippingInfo.country || "US",
+        },
+      };
+    } else if (req.user?.address) {
+      finalShipping = {
+        name: req.user.name,
+        address: {
+          line1: req.user.address.line1 || "",
+          line2: req.user.address.line2 || "",
+          city: req.user.address.city || "",
+          state: req.user.address.state || "",
+          postal_code: req.user.address.postalCode || "",
+          country: req.user.address.country || "US",
+        },
+      };
+    }
+
+    // ------------------------
+    // Create Stripe PaymentIntent
+    // ------------------------
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(totalAmount * 100), // cents
+      currency: "usd",
+      automatic_payment_methods: { enabled: true },
+      receipt_email: customerEmail || undefined,
+      metadata: {
+        userId: userId || null,
+        guestId: userId ? null : guestId,
+        customerEmail: customerEmail || "",
+        customerName: customerName || "",
+        items: JSON.stringify(validatedItems),
+        subtotal: subtotal.toFixed(2),
+        shippingCost: shippingCost.toFixed(2),
+        tax: (0).toFixed(2),
+        total: totalAmount.toFixed(2),
+      },
+      shipping: finalShipping,
+    });
+
+    return res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error("Stripe PaymentIntent error:", err);
+    return res.status(500).json({ error: "Failed to create payment intent" });
   }
+});
 
-  // ------------------------------------
-  // WEBSOCKET SETUP
-  // ------------------------------------
-  const wss = new WebSocket.Server({ server, path: "/ws" });
-
-  wss.on("connection", (ws, req) => {
-    const clientIp = req.socket.remoteAddress;
-    logger.info("📡 WebSocket client connected", { ip: clientIp });
-
-    ws.on("message", (message) => {
-      try {
-        const data = JSON.parse(message);
-        wss.clients.forEach((client) => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
-            client.send(message);
-          }
-        });
-      } catch (err) {
-        logger.error("WebSocket message error", { error: err.message });
-      }
-    });
-
-    ws.on("close", () => {
-      logger.info("📡 WebSocket client disconnected", { ip: clientIp });
-    });
-
-    ws.on("error", (err) => {
-      logger.error("WebSocket error", {
-        message: err.message,
-        stack: err.stack,
-        ip: clientIp,
-      });
-    });
-  });
-
-  server.listen(PORT, () => {
-    const protocol = NODE_ENV === "production" ? "https" : "http";
-    logger.info(`🚀 Server running on ${protocol}://localhost:${PORT}`);
-    logger.info(`📡 WebSocket server running on ws://localhost:${PORT}/ws`);
-    logger.info(`🌍 Environment: ${NODE_ENV}`);
-  });
-
-  // ------------------------------------
-  // GRACEFUL SHUTDOWN
-  // ------------------------------------
-  const gracefulShutdown = (signal) => {
-    logger.info(`${signal} received. Starting graceful shutdown...`);
-
-    server.close(() => {
-      logger.info("HTTP server closed");
-      wss.clients.forEach((client) => client.close());
-      wss.close(() => {
-        logger.info("WebSocket server closed");
-        process.exit(0);
-      });
-    });
-
-    setTimeout(() => {
-      logger.error("Could not close connections in time, forcefully shutting down");
-      process.exit(1);
-    }, 10000);
-  };
-
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-
-  // ------------------------------------
-  // GLOBAL ERROR HANDLING
-  // ------------------------------------
-  process.on("uncaughtException", (err) => {
-    logger.error("Uncaught Exception", { error: err.message, stack: err.stack });
-    process.exit(1);
-  });
-
-  process.on("unhandledRejection", (reason, promise) => {
-    logger.error("Unhandled Rejection", { reason, promise });
-    process.exit(1);
-  });
-}
+module.exports = router;

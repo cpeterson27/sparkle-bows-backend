@@ -59,7 +59,7 @@ exports.createProduct = async (req, res) => {
       price,
       description,
       longDescription,
-      category,
+      category,        // category from frontend
       images,
       inventory,
       materialCost,
@@ -68,10 +68,11 @@ exports.createProduct = async (req, res) => {
       newArrival,
     } = req.body;
 
+    // Price validation
     if (price < materialCost) {
-      return res
-        .status(400)
-        .json({ error: "Price cannot be less than material cost" });
+      return res.status(400).json({
+        error: "Price cannot be less than material cost",
+      });
     }
 
     const profitPerUnit = price - materialCost;
@@ -81,8 +82,8 @@ exports.createProduct = async (req, res) => {
       price,
       description,
       longDescription,
-      category,
-      images, // now an array of { url, alt }
+      category,             // save category
+      images,
       inventory,
       materialCost,
       profitPerUnit,
@@ -112,7 +113,7 @@ exports.updateProduct = async (req, res) => {
       price,
       description,
       longDescription,
-      category,
+      category,        // category to update
       images,
       inventory,
       materialCost,
@@ -121,14 +122,15 @@ exports.updateProduct = async (req, res) => {
       newArrival,
     } = req.body;
 
+    // Price validation (if provided)
     if (
       price !== undefined &&
       materialCost !== undefined &&
       price < materialCost
     ) {
-      return res
-        .status(400)
-        .json({ error: "Price cannot be less than material cost" });
+      return res.status(400).json({
+        error: "Price cannot be less than material cost",
+      });
     }
 
     product.name = name ?? product.name;
@@ -136,9 +138,13 @@ exports.updateProduct = async (req, res) => {
     product.description = description ?? product.description;
     product.longDescription =
       longDescription ?? product.longDescription;
-    product.category = category ?? product.category;
 
-    // Accept images as objects with url + alt
+    // Update category if provided
+    if (category !== undefined) {
+      product.category = category;
+    }
+
+    // Accept updated images if provided
     product.images = images ?? product.images;
 
     product.inventory = inventory ?? product.inventory;
@@ -146,9 +152,16 @@ exports.updateProduct = async (req, res) => {
     product.profitPerUnit =
       (product.price ?? 0) - (product.materialCost ?? 0);
 
-    product.featured = featured ?? product.featured;
-    product.bestseller = bestseller ?? product.bestseller;
-    product.newArrival = newArrival ?? product.newArrival;
+    // Update flags
+    if (featured !== undefined) {
+      product.featured = featured;
+    }
+    if (bestseller !== undefined) {
+      product.bestseller = bestseller;
+    }
+    if (newArrival !== undefined) {
+      product.newArrival = newArrival;
+    }
 
     const updatedProduct = await product.save();
     res.json(updatedProduct);
