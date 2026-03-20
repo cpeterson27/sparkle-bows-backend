@@ -19,9 +19,13 @@ const TWO_FACTOR_PENDING_EXPIRES_IN = "10m";
 const TWO_FACTOR_ISSUER = "Sparkle Bows";
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const FRONTEND_URL =
-  process.env.FRONTEND_CUSTOM_DOMAIN ||
-  process.env.FRONTEND_URL ||
+  readEnv("FRONTEND_CUSTOM_DOMAIN") ||
+  readEnv("FRONTEND_URL") ||
   "https://www.sparklebows.shop";
+
+function readEnv(name) {
+  return typeof process.env[name] === "string" ? process.env[name].trim() : "";
+}
 
 if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
   logger.error("FATAL: JWT_SECRET or JWT_REFRESH_SECRET not defined");
@@ -297,9 +301,9 @@ router.post("/refresh-token", async (req, res) => {
 });
 
 router.get("/google/start", async (req, res) => {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  const clientId = readEnv("GOOGLE_OAUTH_CLIENT_ID");
+  const clientSecret = readEnv("GOOGLE_OAUTH_CLIENT_SECRET");
+  const redirectUri = readEnv("GOOGLE_OAUTH_REDIRECT_URI");
 
   if (!clientId || !clientSecret || !redirectUri) {
     return res.redirect(
@@ -323,9 +327,9 @@ router.get("/google/start", async (req, res) => {
 });
 
 router.get("/google/callback", async (req, res) => {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  const clientId = readEnv("GOOGLE_OAUTH_CLIENT_ID");
+  const clientSecret = readEnv("GOOGLE_OAUTH_CLIENT_SECRET");
+  const redirectUri = readEnv("GOOGLE_OAUTH_REDIRECT_URI");
 
   if (!clientId || !clientSecret || !redirectUri) {
     return res.redirect(
