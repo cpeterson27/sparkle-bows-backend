@@ -9,6 +9,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  const hasOAuthAccessTokenInUrl =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("accessToken");
 
   useEffect(() => {
     injectAccessTokenGetter(() => accessToken);
@@ -47,8 +50,13 @@ export const AuthProvider = ({ children }) => {
   }, [applyAuthPayload]);
 
   useEffect(() => {
+    if (hasOAuthAccessTokenInUrl) {
+      setLoading(false);
+      return;
+    }
+
     tryRefresh();
-  }, [tryRefresh]);
+  }, [hasOAuthAccessTokenInUrl, tryRefresh]);
 
   const loginUser = async ({ email, password }) => {
     const { data } = await api.post(
