@@ -5,7 +5,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import Header from "./components/Header";
 import SiteFooter from "./components/SiteFooter";
@@ -32,8 +32,9 @@ import api from "./api/axios.config";
 import { AuthContext } from "./context/AuthContext";
 
 export default function App() {
-  const { user, loading: authLoading } = useContext(AuthContext);
+  const { user, loading: authLoading, completeOAuthLogin } = useContext(AuthContext);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
@@ -41,8 +42,10 @@ export default function App() {
   const [showCart, setShowCart] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showContact, setShowContact] = useState(false);
+  const [oauthMessage, setOauthMessage] = useState("");
 
   const hasLoadedProducts = useRef(false);
+  const handledOauthRef = useRef("");
 
   // ───────────────── Load products once
   useEffect(() => {
@@ -88,6 +91,46 @@ export default function App() {
   useEffect(() => {
     api.put("/api/cart", { items: cart }).catch(console.error);
   }, [cart]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const accessToken = params.get("accessToken");
+    const error = params.get("error");
+    const provider = params.get("provider");
+
+    if (!accessToken && !error) {
+      if (oauthMessage) setOauthMessage("");
+      return;
+    }
+
+    const fingerprint = `${location.pathname}|${location.search}`;
+    if (handledOauthRef.current === fingerprint) return;
+    handledOauthRef.current = fingerprint;
+
+    if (error) {
+      setOauthMessage(
+        provider === "google"
+          ? "Google sign-in could not be completed."
+          : "Sign-in could not be completed.",
+      );
+      navigate("/", { replace: true });
+      return;
+    }
+
+    setOauthMessage("Finishing your sign-in...");
+
+    (async () => {
+      try {
+        await completeOAuthLogin(accessToken);
+        setOauthMessage("");
+        navigate("/", { replace: true });
+      } catch (completionError) {
+        console.error("OAuth completion failed:", completionError);
+        setOauthMessage("We could not finish your sign-in.");
+        navigate("/", { replace: true });
+      }
+    })();
+  }, [completeOAuthLogin, location.pathname, location.search, navigate, oauthMessage]);
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {
@@ -209,6 +252,12 @@ export default function App() {
       )}
 
       <main className={isAdminRoute ? "" : "pt-[92px] sm:pt-[102px]"}>
+        {!isAdminRoute && oauthMessage ? (
+          <div className="border-b border-rose-100 bg-rose-50 px-4 py-3 text-center text-sm font-medium text-slate-700">
+            {oauthMessage}
+          </div>
+        ) : null}
+
         <Routes>
           <Route
             path="/"
