@@ -18,7 +18,10 @@ const REFRESH_TOKEN_EXPIRES_IN = "7d";
 const TWO_FACTOR_PENDING_EXPIRES_IN = "10m";
 const TWO_FACTOR_ISSUER = "Sparkle Bows";
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+const FRONTEND_URL =
+  process.env.FRONTEND_CUSTOM_DOMAIN ||
+  process.env.FRONTEND_URL ||
+  "https://www.sparklebows.shop";
 const GOOGLE_PKCE_COOKIE = "google_oauth_pkce";
 
 if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
