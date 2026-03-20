@@ -1,9 +1,17 @@
 // src/components/ConfirmModal.js
 import React from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { X, AlertTriangle } from "lucide-react";
 
-export default function ConfirmModal({ productName, onConfirm, onCancel }) {
+export default function ConfirmModal({
+  title = "Confirm Action",
+  message,
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  confirmVariant = "danger", // "danger" | "primary"
+  onConfirm,
+  onCancel,
+}) {
   const modalContent = (
     <div
       className="fixed inset-0 flex items-center justify-center bg-black/60 p-4 z-[10000]"
@@ -22,37 +30,34 @@ export default function ConfirmModal({ productName, onConfirm, onCancel }) {
           <X className="w-5 h-5" />
         </button>
 
+        {/* Icon */}
+        <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-8 h-8 text-pink-500" />
+        </div>
+
         {/* Content */}
-        <h3 className="text-2xl font-bold text-pink-600 mb-4">
-          Delete Bow?
-        </h3>
+        <h3 className="text-2xl font-bold text-gray-800 mb-4">{title}</h3>
 
-        <p className="text-gray-700 text-lg mb-4">
-          Are you sure you want to delete{" "}
-          <span className="font-bold text-pink-600">
-            "{productName}"
-          </span>
-          ?
-        </p>
-
-        <p className="text-sm text-gray-500 mb-6">
-          This action cannot be undone.
-        </p>
+        <p className="text-gray-700 text-lg mb-6">{message}</p>
 
         {/* Actions */}
         <div className="flex justify-center gap-4">
           <button
             onClick={onConfirm}
-            className="bg-red-500 cursor-pointer hover:bg-red-600 text-white font-bold px-6 py-3 rounded-full shadow-lg transition-all hover:scale-105"
+            className={`cursor-pointer font-bold px-6 py-3 rounded-full shadow-lg transition-all hover:scale-105 ${
+              confirmVariant === "danger"
+                ? "bg-red-500 hover:bg-red-600 text-white"
+                : "bg-pink-500 hover:bg-pink-600 text-white"
+            }`}
           >
-            🗑️ Delete
+            {confirmText}
           </button>
 
           <button
             onClick={onCancel}
             className="bg-gray-300 cursor-pointer hover:bg-gray-400 text-gray-800 font-bold px-6 py-3 rounded-full shadow-lg transition-all hover:scale-105"
           >
-            Cancel
+            {cancelText}
           </button>
         </div>
       </div>

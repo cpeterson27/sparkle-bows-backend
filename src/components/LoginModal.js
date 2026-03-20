@@ -1,13 +1,16 @@
-import React, { useState, useContext } from "react";
+import React, { useContext, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { ArrowRight, KeyRound, Lock, Mail, ShieldCheck, User, X } from "lucide-react";
 import api from "../api/axios.config";
 import { AuthContext } from "../context/AuthContext";
 
 export default function LoginModal({ onClose, onLogin }) {
-  const { loginUser } = useContext(AuthContext);
+  const { loginUser, verifyTwoFactorLogin } = useContext(AuthContext);
 
   const [isSignup, setIsSignup] = useState(false);
+  const [authStep, setAuthStep] = useState("credentials");
+  const [twoFactorToken, setTwoFactorToken] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -19,51 +22,72 @@ export default function LoginModal({ onClose, onLogin }) {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const oauthBaseUrl =
+    process.env.REACT_APP_API_URL || window.location.origin;
+  const googleEnabled = process.env.REACT_APP_GOOGLE_OAUTH_ENABLED === "true";
+  const appleEnabled = process.env.REACT_APP_APPLE_OAUTH_ENABLED === "true";
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const redirectToProvider = (provider) => {
+    window.location.href = `${oauthBaseUrl}/api/auth/${provider}/start`;
+  };
+
+  const handleCredentialsSubmit = async (event) => {
+    event.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const endpoint = isSignup
-        ? "/api/auth/signup"
-        : "/api/auth/login";
-
-      const body = isSignup
-        ? {
+      if (isSignup) {
+        await api.post(
+          "/api/auth/signup",
+          {
             name: formData.name,
             email: formData.email,
             password: formData.password,
-            address: formData.address,
-            city: formData.city,
-            state: formData.state,
-            zipCode: formData.zipCode,
-          }
-        : {
-            email: formData.email,
-            password: formData.password,
-          };
+          },
+          { withCredentials: true },
+        );
+      }
 
-      // First call signup/login to set cookie on server
-      await api.post(endpoint, body, {
-        withCredentials: true, // necessary to store refresh cookie
-      });
-
-      // Then authenticate in context (gets access token + user)
-      await loginUser({
+      const response = await loginUser({
         email: formData.email,
         password: formData.password,
       });
 
-      // Call optional callback after successful login/signup
-      if (onLogin) onLogin();
+      if (response?.requiresTwoFactor) {
+        setTwoFactorToken(response.twoFactorToken);
+        setAuthStep("twoFactor");
+        return;
+      }
 
+      onLogin?.();
       onClose();
-    } catch (err) {
+    } catch (submissionError) {
       setError(
-        err.response?.data?.message ||
-        "Authentication failed. Please try again."
+        submissionError.response?.data?.message ||
+          "Authentication failed. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTwoFactorSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      await verifyTwoFactorLogin({
+        twoFactorToken,
+        code: twoFactorCode,
+      });
+      onLogin?.();
+      onClose();
+    } catch (submissionError) {
+      setError(
+        submissionError.response?.data?.message ||
+          "Verification failed. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -72,152 +96,212 @@ export default function LoginModal({ onClose, onLogin }) {
 
   const modalContent = (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[9999]"
-      style={{ zIndex: 999999 }}
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 border-4 border-pink-300 relative animate-in zoom-in"
-        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-lg rounded-[36px] border border-slate-200 bg-white p-8 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
       >
         <button
+          type="button"
           onClick={onClose}
-          className="cursor-pointer absolute -top-4 -right-4 bg-red-500 hover:bg-red-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-2xl border-4 border-white transition-all hover:scale-110"
+          className="absolute right-5 top-5 rounded-full border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-rose-300 hover:text-slate-950"
         >
-          <X className="w-6 h-6" />
+          <X className="h-5 w-5" />
         </button>
 
-        <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600 mb-6 text-center">
-          {isSignup ? "Create Account" : "Welcome Back!"}
-        </h2>
+        <div className="pr-10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-rose-500">
+            Sparkle Bows account
+          </p>
+          <h2 className="mt-4 font-serif text-4xl text-slate-950">
+            {authStep === "twoFactor"
+              ? "Enter your verification code"
+              : isSignup
+                ? "Create your account"
+                : "Welcome back"}
+          </h2>
+          <p className="mt-3 text-sm leading-7 text-slate-500">
+            {authStep === "twoFactor"
+              ? "Your account is protected with two-factor authentication. Enter the 6-digit code from your authenticator app."
+              : "Sign in to track orders, manage saved addresses, and check out faster."}
+          </p>
+        </div>
 
-        {error && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-4 text-red-600 text-sm text-center">
+        {error ? (
+          <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
-        )}
+        ) : null}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isSignup && (
-            <input
-              type="text"
-              placeholder="Your Name"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              className="w-full px-4 py-3 rounded-full border-2 border-pink-200 focus:border-pink-500 focus:outline-none transition-colors"
-              required
-              autoComplete="name"
-            />
-          )}
-
-          <input
-            type="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={(e) =>
-              setFormData({ ...formData, email: e.target.value })
-            }
-            className="w-full px-4 py-3 rounded-full border-2 border-pink-200 focus:border-pink-500 focus:outline-none transition-colors"
-            required
-            autoComplete="email"
-          />
-
-          <input
-            type="password"
-            placeholder="Password"
-            value={formData.password}
-            onChange={(e) =>
-              setFormData({ ...formData, password: e.target.value })
-            }
-            className="w-full px-4 py-3 rounded-full border-2 border-pink-200 focus:border-pink-500 focus:outline-none transition-colors"
-            required
-            minLength={6}
-            autoComplete="current-password"
-          />
-
-          {isSignup && (
-            <>
+        {authStep === "twoFactor" ? (
+          <form onSubmit={handleTwoFactorSubmit} className="mt-6 space-y-5">
+            <label className="block">
+              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <ShieldCheck className="h-4 w-4 text-slate-400" />
+                Authenticator or recovery code
+              </span>
               <input
                 type="text"
-                placeholder="Street Address (optional)"
-                value={formData.address}
-                onChange={(e) =>
-                  setFormData({ ...formData, address: e.target.value })
+                value={twoFactorCode}
+                onChange={(event) =>
+                  setTwoFactorCode(event.target.value.trim().toUpperCase())
                 }
-                className="w-full px-4 py-3 rounded-full border-2 border-pink-200 focus:border-pink-500 focus:outline-none transition-colors"
-                autoComplete="street-address"
+                placeholder="123456 or recovery code"
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-center text-base text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                required
               />
+            </label>
 
-              <div className="grid grid-cols-3 gap-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
+            >
+              {loading ? "Verifying..." : "Verify and sign in"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAuthStep("credentials");
+                setTwoFactorToken("");
+                setTwoFactorCode("");
+                setError("");
+              }}
+              className="w-full text-sm font-medium text-slate-500 transition hover:text-slate-800"
+            >
+              Back to login
+            </button>
+          </form>
+        ) : (
+          <>
+            <div className="mt-6 grid gap-3">
+              <button
+                type="button"
+                onClick={() => redirectToProvider("google")}
+                disabled={!googleEnabled}
+                className="inline-flex items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Continue with Google
+              </button>
+              <button
+                type="button"
+                disabled={!appleEnabled}
+                className="inline-flex items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Continue with Apple
+              </button>
+              {!googleEnabled || !appleEnabled ? (
+                <p className="text-center text-xs text-slate-500">
+                  Provider sign-in buttons activate as soon as the matching OAuth
+                  keys are added to your environment.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Or use email
+              </span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+
+          <form onSubmit={handleCredentialsSubmit} className="mt-6 space-y-4">
+            {isSignup ? (
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <User className="h-4 w-4 text-slate-400" />
+                  Name
+                </span>
                 <input
                   type="text"
-                  placeholder="City"
-                  value={formData.city}
-                  onChange={(e) =>
-                    setFormData({ ...formData, city: e.target.value })
+                  value={formData.name}
+                  onChange={(event) =>
+                    setFormData((current) => ({ ...current, name: event.target.value }))
                   }
-                  className="px-4 py-3 rounded-full border-2 border-pink-200 focus:border-pink-500 focus:outline-none transition-colors"
-                  autoComplete="address-level2"
+                  className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                  required
                 />
+              </label>
+            ) : null}
 
-                <input
-                  type="text"
-                  placeholder="State"
-                  value={formData.state}
-                  onChange={(e) =>
-                    setFormData({ ...formData, state: e.target.value })
-                  }
-                  className="px-4 py-3 rounded-full border-2 border-pink-200 focus:border‑pink‑500 focus:outline-none transition-colors uppercase"
-                  autoComplete="address-level1"
-                />
+            <label className="block">
+              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <Mail className="h-4 w-4 text-slate-400" />
+                Email
+              </span>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(event) =>
+                  setFormData((current) => ({ ...current, email: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                required
+              />
+            </label>
 
-                <input
-                  type="text"
-                  placeholder="Zip"
-                  value={formData.zipCode}
-                  onChange={(e) =>
-                    setFormData({ ...formData, zipCode: e.target.value })
-                  }
-                  className="px-4 py-3 rounded-full border-2 border-pink-200 focus:border‑pink‑500 focus:outline-none transition-colors"
-                  autoComplete="postal-code"
-                />
-              </div>
-            </>
-          )}
+            <label className="block">
+              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <Lock className="h-4 w-4 text-slate-400" />
+                Password
+              </span>
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(event) =>
+                  setFormData((current) => ({ ...current, password: event.target.value }))
+                }
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                required
+                minLength={6}
+              />
+            </label>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="cursor-pointer w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-bold py-3 rounded-full shadow-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading
-              ? "Loading..."
-              : isSignup
-              ? "Sign Up 🎀"
-              : "Log In ✨"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
+            >
+              {loading
+                ? "Working..."
+                : isSignup
+                  ? "Create account"
+                  : "Sign in"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </form>
+          </>
+        )}
 
-        <button
-          onClick={() => {
-            setIsSignup(!isSignup);
-            setError("");
-          }}
-          className="cursor-pointer w-full text-pink-600 hover:text-pink-700 font-bold mt-4 transition-colors"
-        >
-          {isSignup
-            ? "Already have an account? Log In"
-            : "Don't have an account? Sign Up"}
-        </button>
-
-        <button
-          onClick={onClose}
-          className="cursor-pointer w-full text-gray-500 hover:text-gray-700 mt-2 transition-colors"
-        >
-          Continue as Guest
-        </button>
+        {authStep !== "twoFactor" ? (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignup((current) => !current);
+                setError("");
+              }}
+              className="mt-5 w-full text-sm font-medium text-rose-600 transition hover:text-rose-700"
+            >
+              {isSignup
+                ? "Already have an account? Sign in"
+                : "Need an account? Create one"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-800"
+            >
+              <KeyRound className="h-4 w-4" />
+              Continue browsing
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );

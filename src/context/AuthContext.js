@@ -1,5 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback } from "react";
 import api, { injectAccessTokenGetter } from "../api/axios.config";
+import { fetchCurrentUser, updateCurrentUserProfile } from "../api/account";
+import { verifyTwoFactorLogin as verifyTwoFactorLoginRequest } from "../api/security";
 
 export const AuthContext = createContext();
 
@@ -8,13 +10,24 @@ export const AuthProvider = ({ children }) => {
   const [accessToken, setAccessToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Let axios use the current token automatically
-  injectAccessTokenGetter(() => accessToken);
+  useEffect(() => {
+    injectAccessTokenGetter(() => accessToken);
+  }, [accessToken]);
 
   const setAuth = (userData, token) => {
     setUser(userData);
     setAccessToken(token);
   };
+
+  const applyAuthPayload = useCallback((payload) => {
+    const nextUser =
+      payload?.user ??
+      (payload?.id || payload?.email ? payload : null);
+    const nextToken =
+      payload?.accessToken ?? payload?.token ?? accessToken ?? null;
+    setAuth(nextUser, nextToken);
+    return nextUser;
+  }, [accessToken]);
 
   const clearAuth = () => {
     setUser(null);
@@ -25,13 +38,13 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       const { data } = await api.post("/api/auth/refresh-token", {}, { withCredentials: true });
-      setAuth(data.user, data.accessToken);
+      applyAuthPayload(data);
     } catch {
       clearAuth();
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyAuthPayload]);
 
   useEffect(() => {
     tryRefresh();
@@ -43,8 +56,27 @@ export const AuthProvider = ({ children }) => {
       { email, password },
       { withCredentials: true }
     );
-    setAuth(data.user, data.token);
-    return data.user;
+    if (data?.requiresTwoFactor) {
+      return data;
+    }
+    return applyAuthPayload(data);
+  };
+
+  const verifyTwoFactorLogin = async (payload) => {
+    const data = await verifyTwoFactorLoginRequest(payload);
+    return applyAuthPayload(data);
+  };
+
+  const completeOAuthLogin = async (token) => {
+    const { data } = await api.get("/api/auth/me", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return applyAuthPayload({
+      accessToken: token,
+      user: data?.user || data,
+    });
   };
 
   const logoutUser = async () => {
@@ -55,12 +87,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUserProfile = async (profileData) => {
-    const { data } = await api.patch(
-      "/api/auth/update-profile",
-      profileData
-    );
-    setAuth(data.user, data.token);
-    return data.user;
+    const data = await updateCurrentUserProfile(profileData);
+    return applyAuthPayload(data);
+  };
+
+  const refreshCurrentUser = async () => {
+    const data = await fetchCurrentUser();
+    return applyAuthPayload(data);
   };
 
   return (
@@ -70,8 +103,11 @@ export const AuthProvider = ({ children }) => {
         loading,
         accessToken,
         loginUser,
+        verifyTwoFactorLogin,
+        completeOAuthLogin,
         logoutUser,
         updateUserProfile,
+        refreshCurrentUser,
       }}
     >
       {children}

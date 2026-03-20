@@ -51,7 +51,7 @@ export default function SettingsModal({ onClose }) {
 
     try {
       setIsSubmitting(true);
-
+      await updateUserProfile(formData);
       // Call updateUserProfile from context
       const updatedUser = await updateUserProfile(formData);
       updateUserProfile(updatedUser);

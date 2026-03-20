@@ -1,20 +1,23 @@
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios.config";
-import { AuthContext } from "../context/AuthContext";
 
 export default function OrderHistory() {
-  const { user } = useContext(AuthContext);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchOrders = async () => {
       try {
+        console.log("Fetching orders from /api/orders/my...");
         const res = await api.get("/api/orders/my");
+        console.log("Orders response:", res.data);
         setOrders(res.data);
       } catch (err) {
-        console.error("Error fetching orders:", err);
+        console.error(
+          "Error fetching orders:",
+          err.response?.data || err.message,
+        );
       } finally {
         setLoading(false);
       }
@@ -48,10 +51,13 @@ export default function OrderHistory() {
           >
             <div className="flex justify-between">
               <span className="font-semibold">Order #{order._id}</span>
-              <span className="text-gray-500">{new Date(order.createdAt).toLocaleString()}</span>
+              <span className="text-gray-500">
+                {new Date(order.createdAt).toLocaleString()}
+              </span>
             </div>
             <p className="text-gray-700">
-              {order.items.length} item{order.items.length !== 1 ? "s" : ""} — Total: ${order.total.toFixed(2)}
+              {order.items.length} item{order.items.length !== 1 ? "s" : ""} —
+              Total: ${order.total.toFixed(2)}
             </p>
           </Link>
         ))}

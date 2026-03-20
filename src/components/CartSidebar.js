@@ -1,55 +1,94 @@
-import React, { useState } from "react";
-import { Heart, ShoppingCart, Plus, Minus } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
-import StripeCheckoutForm from "./StripeCheckoutForm"; // Stripe form component you added
+import {
+  ArrowRight,
+  Minus,
+  PackageCheck,
+  Plus,
+  ShieldCheck,
+  ShoppingBag,
+  Trash2,
+  Truck,
+  X,
+} from "lucide-react";
+import StripeCheckoutForm from "./StripeCheckoutForm";
+import ConfirmModal from "./ConfirmModal";
 import api from "../api/axios.config";
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
 export default function CartSidebar({
   cart,
-  cartTotal,
+  cartTotal = 0,
   onClose,
   onUpdateQuantity,
   onRemoveItem,
   cartItemCount,
   user,
 }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPayment, setShowPayment] = useState(false);
   const [clientSecret, setClientSecret] = useState(null);
+  const [orderId, setOrderId] = useState(null);
+  const [itemToRemove, setItemToRemove] = useState(null);
 
-  // Called when user clicks Checkout
+  const defaultAddress =
+    user?.addresses?.find((address) => address.isDefault) ||
+    user?.addresses?.[0];
+  const shippingEstimate = cartTotal >= 40 ? 0 : 6.95;
+  const estimatedTotal = cartTotal + shippingEstimate;
+  const stripeOptions = useMemo(
+    () => (clientSecret ? { clientSecret } : null),
+    [clientSecret],
+  );
+
   const handleCheckout = async () => {
     setLoading(true);
     setError("");
 
-    // Must be logged in before checking out
     if (!user) {
-      setError("Please log in to checkout");
+      setError("Please sign in before checking out.");
+      setLoading(false);
+      return;
+    }
+
+    if (!defaultAddress?.line1) {
+      setError("Add a default shipping address in your account settings before checkout.");
       setLoading(false);
       return;
     }
 
     try {
-      // Ask backend for a Stripe PaymentIntent client secret
-      const res = await api.post("/api/stripe/create-payment-intent");
+      const res = await api.post("/api/stripe/create-payment-intent", {
+        customerName: user.name,
+        customerEmail: user.email,
+        shippingInfo: {
+          line1: defaultAddress.line1,
+          line2: defaultAddress.line2 || "",
+          city: defaultAddress.city,
+          state: defaultAddress.state,
+          postalCode: defaultAddress.postalCode,
+          country: defaultAddress.country || "US",
+        },
+      });
 
-      const { clientSecret } = res.data;
-      if (!clientSecret) {
+      if (!res.data?.clientSecret) {
         setError("Failed to start checkout. Please try again.");
-        setLoading(false);
         return;
       }
 
-      setClientSecret(clientSecret);
+      setClientSecret(res.data.clientSecret);
+      setOrderId(res.data.orderId || null);
       setShowPayment(true);
-    } catch (err) {
-      console.error("Checkout error:", err);
+    } catch (checkoutError) {
+      console.error("Checkout error:", checkoutError);
       setError(
-        err.response?.data?.error || "Checkout failed. Please try again."
+        checkoutError.response?.data?.error ||
+          "Checkout failed. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -57,155 +96,231 @@ export default function CartSidebar({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-end"
-      style={{ zIndex: 100000 }}
-    >
-      <div className="bg-white w-full max-w-md h-full shadow-2xl overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b-2 border-pink-200 p-6 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="w-6 h-6 text-pink-600" />
-            <h2 className="text-2xl font-bold text-pink-600">Your Cart</h2>
-            {cart.length > 0 && (
-              <span className="absolute -top-2 left-14 bg-pink-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {cartItemCount}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Main Body */}
-        <div className="p-6">
-          {cart.length === 0 ? (
-            <div className="text-center py-12">
-              <Heart className="w-16 h-16 text-pink-300 mx-auto mb-4" />
-              <p className="text-gray-500">Your cart is empty!</p>
-              <p className="text-sm text-gray-400 mt-2">
-                Add some sparkly bows! ✨
+    <div className="fixed inset-0 z-[100000] bg-slate-950/45 backdrop-blur-sm">
+      <div className="ml-auto flex h-full w-full max-w-xl flex-col bg-[#fcfaf7] shadow-2xl">
+        <div className="border-b border-slate-200 bg-white px-6 py-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                <ShoppingBag className="h-3.5 w-3.5" />
+                Cart
+              </div>
+              <h2 className="mt-3 font-serif text-3xl text-slate-950">
+                Your order
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {cartItemCount} item{cartItemCount === 1 ? "" : "s"} selected
               </p>
             </div>
-          ) : showPayment && clientSecret ? (
-            /* Stripe Payment Form */
-            <Elements stripe={stripePromise} options={{ clientSecret }}>
-              <StripeCheckoutForm
-                cart={cart}
-                cartTotal={cartTotal}
-                onSuccess={() => {
-                  /* you can optionally handle post‑success UI here */
-                }}
-              />
-            </Elements>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-slate-200 bg-white p-3 text-slate-600 transition hover:border-rose-300 hover:text-slate-950"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {cart.length === 0 ? (
+            <div className="rounded-[32px] border border-dashed border-slate-300 bg-white p-10 text-center">
+              <ShoppingBag className="mx-auto h-12 w-12 text-slate-300" />
+              <h3 className="mt-4 font-serif text-3xl text-slate-950">
+                Your cart is empty
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-slate-500">
+                Add a few bows to start building a polished order.
+              </p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-rose-600"
+              >
+                Continue shopping
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          ) : showPayment && clientSecret && stripeOptions ? (
+            <div className="space-y-6">
+              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                  Shipping to
+                </p>
+                <p className="mt-3 text-sm leading-7 text-slate-600">
+                  {user?.name}
+                  <br />
+                  {defaultAddress?.line1}
+                  {defaultAddress?.line2 ? `, ${defaultAddress.line2}` : ""}
+                  <br />
+                  {defaultAddress?.city}, {defaultAddress?.state}{" "}
+                  {defaultAddress?.postalCode}
+                </p>
+              </div>
+
+              <Elements stripe={stripePromise} options={stripeOptions}>
+                <StripeCheckoutForm
+                  clientSecret={clientSecret}
+                  onSuccess={() => {
+                    onClose();
+                    if (orderId) {
+                      navigate(`/thank-you/${orderId}`);
+                    }
+                  }}
+                />
+              </Elements>
+            </div>
           ) : (
-            <>
-              {/* Cart Items */}
-              <div className="space-y-6 mb-6">
+            <div className="space-y-6">
+              <div className="space-y-4">
                 {cart.map((item) => (
-                  <div
+                  <article
                     key={item.productId._id}
-                    className="bg-pink-50 rounded-xl p-4 border-2 border-pink-200"
+                    className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm"
                   >
-                    <div className="flex gap-4 items-start">
-                      {/* Thumbnail */}
+                    <div className="flex gap-4">
                       <img
                         src={item.productId.images?.[0]?.url}
-                        alt={
-                          item.productId.images?.[0]?.alt ||
-                          item.productId.name
-                        }
-                        className="w-20 h-20 rounded-lg object-cover"
+                        alt={item.productId.images?.[0]?.alt || item.productId.name}
+                        className="h-24 w-24 rounded-2xl object-cover"
                       />
-
-                      <div className="flex-1 space-y-2">
-                        <h3 className="font-bold text-gray-800">
-                          {item.productId.name}
-                        </h3>
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-1 flex-col">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                              {item.productId.category || "Signature bow"}
+                            </p>
+                            <h3 className="mt-1 font-semibold text-slate-950">
+                              {item.productId.name}
+                            </h3>
+                            <p className="mt-2 text-sm font-medium text-slate-600">
+                              ${Number(item.productId.price || 0).toFixed(2)} each
+                            </p>
+                          </div>
                           <button
+                            type="button"
                             onClick={() =>
-                              onUpdateQuantity(
-                                item.productId._id,
-                                item.quantity - 1
-                              )
+                              setItemToRemove({
+                                id: item.productId._id,
+                                name: item.productId.name,
+                              })
                             }
-                            className="w-6 h-6 rounded-full bg-pink-200 hover:bg-pink-300 flex items-center justify-center"
+                            className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                           >
-                            <Minus className="w-3 h-3" />
-                          </button>
-
-                          <span className="text-pink-600 font-bold w-8 text-center">
-                            {item.quantity}
-                          </span>
-
-                          <button
-                            onClick={() =>
-                              onUpdateQuantity(
-                                item.productId._id,
-                                item.quantity + 1
-                              )
-                            }
-                            className="w-6 h-6 rounded-full bg-pink-200 hover:bg-pink-300 flex items-center justify-center"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-
-                          <button
-                            onClick={() => onRemoveItem(item.productId._id)}
-                            className="bg-red-300 hover:bg-red-400 text-white font-semibold text-sm px-3 py-1 rounded-full shadow transition-all ml-auto"
-                          >
-                            Remove
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
 
-                        <div className="text-gray-700 text-sm">
-                          Item Total:{" "}
-                          <span className="font-semibold">
-                            ${(item.productId.price * item.quantity).toFixed(2)}
-                          </span>
+                        <div className="mt-4 flex items-center justify-between">
+                          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 p-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateQuantity(item.productId._id, item.quantity - 1)
+                              }
+                              className="rounded-full p-2 text-slate-700 transition hover:bg-white"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                            <span className="min-w-10 text-center text-sm font-semibold text-slate-950">
+                              {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateQuantity(item.productId._id, item.quantity + 1)
+                              }
+                              className="rounded-full p-2 text-slate-700 transition hover:bg-white"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <p className="text-base font-semibold text-slate-950">
+                            ${(Number(item.productId.price || 0) * item.quantity).toFixed(2)}
+                          </p>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </article>
                 ))}
               </div>
 
-              {error && (
-                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 mb-4">
-                  <p className="text-red-600 text-sm text-center">{error}</p>
+              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                  Order summary
+                </p>
+                <div className="mt-5 space-y-3 text-sm text-slate-600">
+                  <div className="flex items-center justify-between">
+                    <span>Subtotal</span>
+                    <span>${cartTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Estimated shipping</span>
+                    <span>
+                      {shippingEstimate === 0 ? "Free" : `$${shippingEstimate.toFixed(2)}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-950">
+                    <span>Estimated total</span>
+                    <span>${estimatedTotal.toFixed(2)}</span>
+                  </div>
                 </div>
-              )}
 
-              {/* Grand Total & Checkout Button */}
-              <div className="border-t-2 border-pink-300 pt-6">
-                <div className="flex justify-between items-center text-xl font-bold text-gray-800 mb-4">
-                  <span>Grand Total:</span>
-                  <span className="text-pink-600 text-2xl">
-                    ${cartTotal.toFixed(2)}
-                  </span>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                    <ShieldCheck className="h-4 w-4 text-rose-500" />
+                    <p className="mt-2 font-semibold text-slate-950">Secure payment</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                    <Truck className="h-4 w-4 text-rose-500" />
+                    <p className="mt-2 font-semibold text-slate-950">Tracked shipping</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                    <PackageCheck className="h-4 w-4 text-rose-500" />
+                    <p className="mt-2 font-semibold text-slate-950">Gift-ready packaging</p>
+                  </div>
                 </div>
+
+                {error ? (
+                  <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                ) : null}
 
                 <button
+                  type="button"
                   onClick={handleCheckout}
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold py-3 rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mt-6 w-full rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
                 >
-                  {loading ? "Processing..." : "Checkout 💖"}
+                  {loading ? "Preparing checkout..." : "Proceed to secure checkout"}
                 </button>
 
-                <p className="text-xs text-gray-500 text-center mt-2">
-                  Secure checkout powered by Stripe
-                </p>
+                {!user ? (
+                  <p className="mt-3 text-xs text-slate-500">
+                    Sign in first so we can connect your order to your account.
+                  </p>
+                ) : null}
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
+
+      {itemToRemove ? (
+        <ConfirmModal
+          title="Remove Item?"
+          message={`Remove "${itemToRemove.name}" from this order?`}
+          confirmText="Remove"
+          cancelText="Keep item"
+          confirmVariant="danger"
+          onConfirm={() => {
+            onRemoveItem(itemToRemove.id);
+            setItemToRemove(null);
+          }}
+          onCancel={() => setItemToRemove(null)}
+        />
+      ) : null}
     </div>
   );
 }
