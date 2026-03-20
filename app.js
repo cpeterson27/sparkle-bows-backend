@@ -1,27 +1,21 @@
-// app.js
 require("dotenv").config();
 const express = require("express");
-const cors = require("cors");
 const helmet = require("helmet");
+const cors = require("cors");
 const mongoSanitize = require("express-mongo-sanitize");
 const cookieParser = require("cookie-parser");
 const logger = require("./logger");
 const morganMiddleware = require("./middleware/morganLogger");
 const { generalLimiter, authLimiter, refreshTokenLimiter, cartLimiter } = require("./middleware/rateLimit");
-
-// Routes
-const authRoutes = require("./routes/auth");
-const productRoutes = require("./routes/productRoutes");
-const reviewRoutes = require("./routes/reviewRoutes");
-const uploadRoutes = require("./routes/upload");
-const cartRoutes = require("./routes/cart");
-const orderRoutes = require("./routes/orders");
-const adminRoutes = require("./routes/admin");
-const stripeRoutes = require("./routes/stripe");
-const stripeWebhookRoutes = require("./routes/stripeWebhook");
-const { router: expenseRoutes } = require("./routes/expenses");
+const userRoutes = require("./routes/user");          // ✅ NEW
+const validationRoutes = require("./routes/validation");
 
 const app = express();
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:3000",
+  process.env.FRONTEND_CUSTOM_DOMAIN || "https://www.sparklebows.shop",
+  "https://sparkle-bows-frontend.onrender.com",
+].filter(Boolean);
 
 // ------------------------
 // SECURITY + CORS
@@ -41,10 +35,7 @@ app.use(
 
 app.use(
   cors({
-    origin: [
-      process.env.FRONTEND_URL || "http://localhost:3000",
-      "https://sparkle-bows-frontend.onrender.com"
-    ],
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -61,7 +52,12 @@ app.use("/api/auth/refresh-token", refreshTokenLimiter);
 app.use("/api/cart", cartLimiter);
 
 // ------------------------
-// BODY + COOKIE PARSING
+// ⚠️ CRITICAL: Stripe webhook MUST come BEFORE body parsers
+// ------------------------
+app.use("/api/stripe/webhook", require("./routes/stripeWebhook"));
+
+// ------------------------
+// BODY + COOKIE PARSING + SANITIZATION
 // ------------------------
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -72,17 +68,19 @@ app.use(morganMiddleware);
 // ------------------------
 // ROUTES
 // ------------------------
-app.use("/api/auth", authRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/reviews", reviewRoutes);
-app.use("/api/uploads", uploadRoutes);
-app.use("/api/cart", cartRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/stripe", stripeRoutes);           // PaymentIntent
-app.use("/api/stripe/webhook", stripeWebhookRoutes); // Webhook
-app.use("/api/expenses", expenseRoutes);
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/products", require("./routes/productRoutes"));
+app.use("/api/reviews", require("./routes/reviewRoutes"));
+app.use("/api/uploads", require("./routes/upload"));
+app.use("/api/cart", require("./routes/cart"));
+app.use("/api/orders", require("./routes/orders"));
+app.use("/api/admin", require("./routes/admin"));
+app.use("/api/stripe", require("./routes/stripe"));
+app.use("/api/expenses", require("./routes/expenses"));
 app.use("/api/checkout", require("./routes/checkout"));
+app.use("/api/user", userRoutes);           // ✅ NEW - Handles /api/user/address
+app.use("/api/leads", require("./routes/leads"));
+app.use("/api", validationRoutes); 
 
 // ------------------------
 // HEALTH CHECK

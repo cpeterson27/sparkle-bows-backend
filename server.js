@@ -1,117 +1,113 @@
+require("dotenv").config();
+console.log("MONGODB_URI:", process.env.MONGODB_URI);
+
 const express = require("express");
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const Product = require("../models/productModel");
-const { optionalAuth } = require("../middleware/auth");
-const { calculateShipping } = require("../utils/shippingCalculator");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const http = require("http");
+const WebSocket = require("ws");
 
-const router = express.Router();
+const app = express();
 
-// ------------------------
-// CREATE PAYMENT INTENT
-// ------------------------
-router.post("/create-payment-intent", optionalAuth, async (req, res) => {
-  try {
-    const userId = req.user?._id?.toString() || null;
-    let guestId = req.cookies?.guestId || null;
-
-    // Generate guestId if neither logged-in nor cookie exists
-    if (!userId && !guestId) {
-      const newGuestId = Math.random().toString(36).substring(2, 15);
-      res.cookie("guestId", newGuestId, { httpOnly: true, sameSite: "lax" });
-      guestId = newGuestId;
-    }
-
-    const { items: frontendItems, customerName, customerEmail, shippingInfo } = req.body;
-
-    if (!frontendItems || frontendItems.length === 0)
-      return res.status(400).json({ error: "No items to purchase" });
-
-    // ------------------------
-    // Validate items & calculate subtotal
-    // ------------------------
-    const validatedItems = [];
-    let subtotal = 0;
-
-    for (const item of frontendItems) {
-      const product = await Product.findById(item.productId);
-      if (!product) return res.status(400).json({ error: `Product not found: ${item.name}` });
-      if (item.quantity > product.inventory)
-        return res.status(400).json({ error: `Not enough stock for: ${product.name}` });
-
-      validatedItems.push({
-        productId: product._id.toString(),
-        name: product.name,
-        quantity: item.quantity,
-        price: product.price,
-      });
-
-      subtotal += product.price * item.quantity;
-    }
-
-    // ------------------------
-    // Calculate shipping server-side
-    // ------------------------
-    const totalItems = validatedItems.reduce((sum, i) => sum + i.quantity, 0);
-    const shippingCost = calculateShipping(subtotal, totalItems);
-    const totalAmount = subtotal + shippingCost;
-
-    // ------------------------
-    // Determine final shipping address
-    // ------------------------
-    let finalShipping;
-    if (shippingInfo) {
-      finalShipping = {
-        name: shippingInfo.name,
-        address: {
-          line1: shippingInfo.line1,
-          line2: shippingInfo.line2 || "",
-          city: shippingInfo.city,
-          state: shippingInfo.state,
-          postal_code: shippingInfo.postalCode,
-          country: shippingInfo.country || "US",
-        },
-      };
-    } else if (req.user?.address) {
-      finalShipping = {
-        name: req.user.name,
-        address: {
-          line1: req.user.address.line1 || "",
-          line2: req.user.address.line2 || "",
-          city: req.user.address.city || "",
-          state: req.user.address.state || "",
-          postal_code: req.user.address.postalCode || "",
-          country: req.user.address.country || "US",
-        },
-      };
-    }
-
-    // ------------------------
-    // Create Stripe PaymentIntent
-    // ------------------------
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(totalAmount * 100), // cents
-      currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      receipt_email: customerEmail || undefined,
-      metadata: {
-        userId: userId || null,
-        guestId: userId ? null : guestId,
-        customerEmail: customerEmail || "",
-        customerName: customerName || "",
-        items: JSON.stringify(validatedItems),
-        subtotal: subtotal.toFixed(2),
-        shippingCost: shippingCost.toFixed(2),
-        tax: (0).toFixed(2),
-        total: totalAmount.toFixed(2),
-      },
-      shipping: finalShipping,
-    });
-
-    return res.json({ clientSecret: paymentIntent.client_secret });
-  } catch (err) {
-    console.error("Stripe PaymentIntent error:", err);
-    return res.status(500).json({ error: "Failed to create payment intent" });
-  }
+app.use((req, res, next) => {
+  console.log('Incoming Request Headers:', req.headers);
+  next();
 });
 
-module.exports = router;
+// CORS Configuration - FIXED FOR PRODUCTION
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "User-Agent",
+      "Host",
+      "Connection",
+      "Accept-Encoding",
+      "Accept-Language",
+      "Cache-Control",
+      "Pragma",
+      "Upgrade-Insecure-Requests",
+      "Sec-Fetch-Dest",
+      "Sec-Fetch-Mode",
+      "Sec-Fetch-Site",
+      "Sec-Fetch-User",
+      "Sec-Ch-Ua",
+      "Sec-Ch-Ua-Mobile",
+      "Sec-Ch-Ua-Platform",
+      "Sec-Purpose",
+      "DNT",
+      "Upgrade",
+      "Referer",
+      "TE",
+      "If-Modified-Since",
+      "If-None-Match",
+      "If-Range",
+      "Range",
+    ],
+  })
+);
+
+// Body Parser Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+
+// Root route for testing
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "✨ Sparkle Bows Backend API ✨",
+    status: "running",
+    endpoints: {
+      health: "/api/health",
+      products: "/api/products",
+      auth: "/api/auth"
+    }
+  });
+});
+
+// Test route
+app.get("/api/health", (req, res) => {
+  res.json({ status: "OK", message: "Backend is running!" });
+});
+
+// Import routes
+const authRoutes = require("./routes/auth");
+const productRoutes = require("./routes/productRoutes");
+
+// Use routes
+app.use("/api/auth", authRoutes);
+app.use("/api/products", productRoutes);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: "Something went wrong!" });
+});
+
+// FIXED: Use PORT from environment variable
+const PORT = process.env.PORT || 3001;
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server, path: "/ws" });
+
+wss.on("connection", (ws) => {
+  console.log("Client connected");
+  ws.on("close", () => console.log("Client disconnected"));
+});
+
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 CORS enabled for ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.log(`🚀 WebSocket server running on ws://localhost:${PORT}/ws`);
+});
