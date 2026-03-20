@@ -5,6 +5,23 @@ import { verifyTwoFactorLogin as verifyTwoFactorLoginRequest } from "../api/secu
 
 export const AuthContext = createContext();
 
+function decodeJwtPayload(token) {
+  try {
+    const payloadSegment = String(token || "").split(".")[1];
+    if (!payloadSegment) return null;
+
+    const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      "=",
+    );
+    const payloadJson = atob(padded);
+    return JSON.parse(payloadJson);
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
@@ -76,15 +93,40 @@ export const AuthProvider = ({ children }) => {
   };
 
   const completeOAuthLogin = async (token) => {
-    const { data } = await api.get("/api/auth/me", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    return applyAuthPayload({
-      accessToken: token,
-      user: data?.user || data,
-    });
+    const decoded = decodeJwtPayload(token);
+    const fallbackUser =
+      decoded?.userId || decoded?.email
+        ? {
+            id: decoded.userId,
+            email: decoded.email,
+            name: decoded.name,
+            role: decoded.role || "user",
+          }
+        : null;
+
+    if (fallbackUser) {
+      applyAuthPayload({
+        accessToken: token,
+        user: fallbackUser,
+      });
+    }
+
+    try {
+      const { data } = await api.get("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      return applyAuthPayload({
+        accessToken: token,
+        user: data?.user || data,
+      });
+    } catch (error) {
+      if (fallbackUser) {
+        return fallbackUser;
+      }
+      throw error;
+    }
   };
 
   const logoutUser = async () => {
