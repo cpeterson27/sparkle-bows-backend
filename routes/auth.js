@@ -22,7 +22,6 @@ const FRONTEND_URL =
   process.env.FRONTEND_CUSTOM_DOMAIN ||
   process.env.FRONTEND_URL ||
   "https://www.sparklebows.shop";
-const GOOGLE_PKCE_COOKIE = "google_oauth_pkce";
 
 if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
   logger.error("FATAL: JWT_SECRET or JWT_REFRESH_SECRET not defined");
@@ -186,16 +185,6 @@ async function createSessionResponse(user, res) {
   return accessToken;
 }
 
-function createPkcePair() {
-  const verifier = crypto.randomBytes(32).toString("base64url");
-  const challenge = crypto
-    .createHash("sha256")
-    .update(verifier)
-    .digest("base64url");
-
-  return { verifier, challenge };
-}
-
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -309,9 +298,10 @@ router.post("/refresh-token", async (req, res) => {
 
 router.get("/google/start", async (req, res) => {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
 
-  if (!clientId || !redirectUri) {
+  if (!clientId || !clientSecret || !redirectUri) {
     return res.redirect(
       buildFrontendAuthRedirect({
         error: "google_not_configured",
@@ -320,12 +310,6 @@ router.get("/google/start", async (req, res) => {
     );
   }
 
-  const { verifier, challenge } = createPkcePair();
-  res.cookie(GOOGLE_PKCE_COOKIE, verifier, {
-    ...cookieOptions,
-    maxAge: 10 * 60 * 1000,
-  });
-
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -333,8 +317,6 @@ router.get("/google/start", async (req, res) => {
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
-    code_challenge: challenge,
-    code_challenge_method: "S256",
   });
 
   return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
@@ -342,9 +324,10 @@ router.get("/google/start", async (req, res) => {
 
 router.get("/google/callback", async (req, res) => {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
 
-  if (!clientId || !redirectUri) {
+  if (!clientId || !clientSecret || !redirectUri) {
     return res.redirect(
       buildFrontendAuthRedirect({
         error: "google_not_configured",
@@ -355,10 +338,8 @@ router.get("/google/callback", async (req, res) => {
 
   try {
     const { code, error } = req.query;
-    const codeVerifier = req.cookies[GOOGLE_PKCE_COOKIE];
 
     if (error) {
-      res.clearCookie(GOOGLE_PKCE_COOKIE, cookieOptions);
       return res.redirect(
         buildFrontendAuthRedirect({
           error,
@@ -367,11 +348,10 @@ router.get("/google/callback", async (req, res) => {
       );
     }
 
-    if (!code || !codeVerifier) {
-      res.clearCookie(GOOGLE_PKCE_COOKIE, cookieOptions);
+    if (!code) {
       return res.redirect(
         buildFrontendAuthRedirect({
-          error: "missing_google_code_or_verifier",
+          error: "missing_google_code",
           provider: "google",
         })
       );
@@ -382,9 +362,9 @@ router.get("/google/callback", async (req, res) => {
       new URLSearchParams({
         code,
         client_id: clientId,
+        client_secret: clientSecret,
         redirect_uri: redirectUri,
         grant_type: "authorization_code",
-        code_verifier: codeVerifier,
       }).toString(),
       {
         headers: {
@@ -437,8 +417,6 @@ router.get("/google/callback", async (req, res) => {
     }
 
     const accessToken = await createSessionResponse(user, res);
-    res.clearCookie(GOOGLE_PKCE_COOKIE, cookieOptions);
-
     return res.redirect(
       buildFrontendAuthRedirect({
         accessToken,
@@ -447,7 +425,6 @@ router.get("/google/callback", async (req, res) => {
     );
   } catch (error) {
     logger.error("Google OAuth callback error", { error: error.message });
-    res.clearCookie(GOOGLE_PKCE_COOKIE, cookieOptions);
     return res.redirect(
       buildFrontendAuthRedirect({
         error: "google_oauth_failed",
