@@ -172,7 +172,8 @@ function serializeUser(user) {
 }
 
 function buildFrontendAuthRedirect(params = {}) {
-  const redirectUrl = new URL("/auth/callback", FRONTEND_URL);
+  const redirectUrl = new URL("/", FRONTEND_URL);
+  redirectUrl.searchParams.set("oauth", "1");
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
       redirectUrl.searchParams.set(key, String(value));
