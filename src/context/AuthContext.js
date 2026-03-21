@@ -4,6 +4,7 @@ import { fetchCurrentUser, updateCurrentUserProfile } from "../api/account";
 import { verifyTwoFactorLogin as verifyTwoFactorLoginRequest } from "../api/security";
 
 export const AuthContext = createContext();
+const AUTH_STORAGE_KEY = "sparkle_bows_auth";
 
 function decodeJwtPayload(token) {
   try {
@@ -22,9 +23,45 @@ function decodeJwtPayload(token) {
   }
 }
 
+function readStoredAuth() {
+  if (typeof window === "undefined") {
+    return { user: null, accessToken: null };
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) {
+      return { user: null, accessToken: null };
+    }
+
+    const parsed = JSON.parse(raw);
+    return {
+      user: parsed?.user || null,
+      accessToken: parsed?.accessToken || null,
+    };
+  } catch {
+    return { user: null, accessToken: null };
+  }
+}
+
+function writeStoredAuth(user, accessToken) {
+  if (typeof window === "undefined") return;
+
+  if (!user || !accessToken) {
+    window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(
+    AUTH_STORAGE_KEY,
+    JSON.stringify({ user, accessToken }),
+  );
+}
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [accessToken, setAccessToken] = useState(null);
+  const storedAuth = readStoredAuth();
+  const [user, setUser] = useState(storedAuth.user);
+  const [accessToken, setAccessToken] = useState(storedAuth.accessToken);
   const [loading, setLoading] = useState(true);
   const hasOAuthAccessTokenInUrl =
     typeof window !== "undefined" &&
@@ -37,6 +74,7 @@ export const AuthProvider = ({ children }) => {
   const setAuth = (userData, token) => {
     setUser(userData);
     setAccessToken(token);
+    writeStoredAuth(userData, token);
   };
 
   const applyAuthPayload = useCallback((payload) => {
@@ -52,6 +90,7 @@ export const AuthProvider = ({ children }) => {
   const clearAuth = () => {
     setUser(null);
     setAccessToken(null);
+    writeStoredAuth(null, null);
   };
 
   const tryRefresh = useCallback(async () => {
@@ -60,11 +99,13 @@ export const AuthProvider = ({ children }) => {
       const { data } = await api.post("/api/auth/refresh-token", {}, { withCredentials: true });
       applyAuthPayload(data);
     } catch {
-      clearAuth();
+      if (!storedAuth.accessToken || !storedAuth.user) {
+        clearAuth();
+      }
     } finally {
       setLoading(false);
     }
-  }, [applyAuthPayload]);
+  }, [applyAuthPayload, storedAuth.accessToken, storedAuth.user]);
 
   useEffect(() => {
     if (hasOAuthAccessTokenInUrl) {
