@@ -80,9 +80,15 @@ export const AuthProvider = ({ children }) => {
 
   // Called by App.jsx after OAuth redirect lands on /?oauth=success
   // The refreshToken cookie is already set — just call tryRefresh.
-  const completeOAuthLogin = useCallback(async () => {
-    await tryRefresh();
-  }, [tryRefresh]);
+const completeOAuthLogin = useCallback(async (oauthToken = "") => {
+  if (oauthToken) {
+    const { data } = await api.get("/api/auth/me", {
+      headers: { Authorization: `Bearer ${oauthToken}` },
+    });
+    return applyAuthPayload({ ...data, accessToken: oauthToken });
+  }
+  await tryRefresh();
+}, [applyAuthPayload, tryRefresh]);
 
   const logoutUser = async () => {
     try {

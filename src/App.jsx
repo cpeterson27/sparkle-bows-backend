@@ -98,39 +98,40 @@ export default function App() {
   // ───────────────── Handle OAuth redirect
   // Backend sets the cookie before redirecting to /?oauth=success
   // No token ever touches the URL — just trigger a session refresh.
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const oauthStatus = params.get("oauth");
-    const oauthError = params.get("oauth_error");
+useEffect(() => {
+  const params = new URLSearchParams(location.search);
+  const oauthStatus = params.get("oauth");
+  const oauthToken = params.get("token") || "";
+  const oauthError = params.get("oauth_error");
 
-    if (!oauthStatus && !oauthError) {
-      if (oauthMessage) setOauthMessage("");
-      return;
-    }
+  if (!oauthStatus && !oauthError) {
+    if (oauthMessage) setOauthMessage("");
+    return;
+  }
 
-    const fingerprint = location.search;
-    if (handledOauthRef.current === fingerprint) return;
-    handledOauthRef.current = fingerprint;
+  const fingerprint = location.search;
+  if (handledOauthRef.current === fingerprint) return;
+  handledOauthRef.current = fingerprint;
 
-    if (oauthError) {
-      setOauthMessage("Sign-in could not be completed. Please try again.");
-      navigate("/", { replace: true });
-      return;
-    }
+  if (oauthError) {
+    setOauthMessage("Sign-in could not be completed. Please try again.");
+    navigate("/", { replace: true });
+    return;
+  }
 
-    if (oauthStatus === "success") {
-      setOauthMessage("Finishing your sign-in...");
-      completeOAuthLogin()
-        .then(() => {
-          setOauthMessage("");
-          navigate("/", { replace: true });
-        })
-        .catch(() => {
-          setOauthMessage("We could not finish your sign-in. Please try again.");
-          navigate("/", { replace: true });
-        });
-    }
-  }, [location.search, completeOAuthLogin, navigate, oauthMessage]);
+  if (oauthStatus === "success") {
+    setOauthMessage("Finishing your sign-in...");
+    completeOAuthLogin(oauthToken)
+      .then(() => {
+        setOauthMessage("");
+        navigate("/", { replace: true });
+      })
+      .catch(() => {
+        setOauthMessage("We could not finish your sign-in. Please try again.");
+        navigate("/", { replace: true });
+      });
+  }
+}, [location.search, completeOAuthLogin, navigate, oauthMessage]);
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {
