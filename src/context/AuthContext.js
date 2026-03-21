@@ -21,8 +21,7 @@ export const AuthProvider = ({ children }) => {
 
   const applyAuthPayload = useCallback((payload) => {
     const nextUser =
-      payload?.user ??
-      (payload?.id || payload?.email ? payload : null);
+      payload?.user ?? (payload?.id || payload?.email ? payload : null);
     const nextToken =
       payload?.accessToken ?? payload?.token ?? accessToken ?? null;
     setAuth(nextUser, nextToken);
@@ -37,7 +36,11 @@ export const AuthProvider = ({ children }) => {
   const tryRefresh = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await api.post("/api/auth/refresh-token", {}, { withCredentials: true });
+      const { data } = await api.post(
+        "/api/auth/refresh-token",
+        {},
+        { withCredentials: true }
+      );
       applyAuthPayload(data);
     } catch (error) {
       if (error.response?.status && error.response.status !== 401) {
@@ -49,9 +52,14 @@ export const AuthProvider = ({ children }) => {
     }
   }, [applyAuthPayload]);
 
+  // Only run tryRefresh on mount — not after OAuth login
+  const [initialRefreshDone, setInitialRefreshDone] = useState(false);
   useEffect(() => {
-    tryRefresh();
-  }, [tryRefresh]);
+    if (!initialRefreshDone) {
+      setInitialRefreshDone(true);
+      tryRefresh();
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const loginUser = async ({ email, password }) => {
     const { data } = await api.post(
@@ -72,24 +80,17 @@ export const AuthProvider = ({ children }) => {
 
   const completeOAuthLogin = async (oauthToken = "") => {
     if (oauthToken) {
+      // Use the token from the URL hash directly — don't call tryRefresh
+      // because the cross-domain cookie may not be available yet
       const { data } = await api.get("/api/auth/me", {
-        headers: {
-          Authorization: `Bearer ${oauthToken}`,
-        },
+        headers: { Authorization: `Bearer ${oauthToken}` },
       });
 
-      const nextUser = applyAuthPayload({
+      return applyAuthPayload({
         ...data,
         token: oauthToken,
         accessToken: oauthToken,
       });
-
-      // Give the refresh-token cookie a moment to settle after the redirect.
-      setTimeout(() => {
-        tryRefresh();
-      }, 300);
-
-      return nextUser;
     }
 
     return refreshCurrentUser();
