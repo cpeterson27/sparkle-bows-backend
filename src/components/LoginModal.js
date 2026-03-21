@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowRight,
@@ -23,16 +23,20 @@ export default function LoginModal({ onClose, onLogin }) {
     email: "",
     password: "",
     name: "",
-    address: "",
-    city: "",
-    state: "",
-    zipCode: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
   const oauthBaseUrl = process.env.REACT_APP_API_URL || window.location.origin;
   const googleEnabled = process.env.REACT_APP_GOOGLE_OAUTH_ENABLED === "true";
-  const appleEnabled = process.env.REACT_APP_APPLE_OAUTH_ENABLED === "true";
+
+  // Auto-load saved email on mount
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("savedEmail");
+    if (savedEmail) {
+      setFormData((current) => ({ ...current, email: savedEmail }));
+    }
+  }, []);
 
   const redirectToProvider = (provider) => {
     window.location.href = `${oauthBaseUrl}/api/auth/${provider}/start`;
@@ -66,6 +70,9 @@ export default function LoginModal({ onClose, onLogin }) {
         setAuthStep("twoFactor");
         return;
       }
+
+      // Auto-save email for next visit
+      localStorage.setItem("savedEmail", formData.email);
 
       onLogin?.();
       onClose();
@@ -151,6 +158,7 @@ export default function LoginModal({ onClose, onLogin }) {
               </span>
               <input
                 type="text"
+                autoComplete="one-time-code"
                 value={twoFactorCode}
                 onChange={(event) =>
                   setTwoFactorCode(event.target.value.trim().toUpperCase())
@@ -185,29 +193,23 @@ export default function LoginModal({ onClose, onLogin }) {
           </form>
         ) : (
           <>
-            <div className="mt-6 grid gap-3">
-              <button
-                type="button"
-                onClick={() => redirectToProvider("google")}
-                disabled={!googleEnabled}
-                className="inline-flex items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Continue with Google
-              </button>
-              <button
-                type="button"
-                disabled={!appleEnabled}
-                className="inline-flex items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Continue with Apple
-              </button>
-              {!googleEnabled || !appleEnabled ? (
-                <p className="text-center text-xs text-slate-500">
-                  Provider sign-in buttons activate as soon as the matching
-                  OAuth keys are added to your environment.
-                </p>
-              ) : null}
-            </div>
+            {googleEnabled && (
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={() => redirectToProvider("google")}
+                  className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Continue with Google
+                </button>
+              </div>
+            )}
 
             <div className="mt-6 flex items-center gap-3">
               <div className="h-px flex-1 bg-slate-200" />
@@ -222,10 +224,11 @@ export default function LoginModal({ onClose, onLogin }) {
                 <label className="block">
                   <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                     <User className="h-4 w-4 text-slate-400" />
-                    Name
+                    Full name
                   </span>
                   <input
                     type="text"
+                    autoComplete="name"
                     value={formData.name}
                     onChange={(event) =>
                       setFormData((current) => ({
@@ -246,7 +249,7 @@ export default function LoginModal({ onClose, onLogin }) {
                 </span>
                 <input
                   type="email"
-                  autoComplete="email" 
+                  autoComplete="email"
                   value={formData.email}
                   onChange={(event) =>
                     setFormData((current) => ({
@@ -266,7 +269,7 @@ export default function LoginModal({ onClose, onLogin }) {
                 </span>
                 <input
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete={isSignup ? "new-password" : "current-password"}
                   value={formData.password}
                   onChange={(event) =>
                     setFormData((current) => ({
@@ -285,11 +288,7 @@ export default function LoginModal({ onClose, onLogin }) {
                 disabled={loading}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
               >
-                {loading
-                  ? "Working..."
-                  : isSignup
-                    ? "Create account"
-                    : "Sign in"}
+                {loading ? "Working..." : isSignup ? "Create account" : "Sign in"}
                 <ArrowRight className="h-4 w-4" />
               </button>
             </form>
