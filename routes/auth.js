@@ -342,7 +342,7 @@ router.get("/google/start", async (req, res) => {
     response_type: "code",
     scope: "openid email profile",
     access_type: "online",
-    prompt: "select_account",
+    prompt: "consent select_account",
   });
 
   return res.redirect(
