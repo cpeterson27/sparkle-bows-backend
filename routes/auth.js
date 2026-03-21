@@ -336,11 +336,8 @@ router.get("/google/callback", async (req, res) => {
 
   try {
     const { code, error } = req.query;
-
     if (error || !code) {
-      return res.redirect(
-        buildFrontendErrorRedirect(error || "missing_google_code", "google"),
-      );
+      return res.redirect(buildFrontendErrorRedirect(error || "missing_google_code", "google"));
     }
 
     const tokenResponse = await axios.post(
@@ -383,15 +380,15 @@ router.get("/google/callback", async (req, res) => {
       await user.save();
     } else {
       user.googleId = profile.sub || user.googleId;
-      if (!user.authProvider || user.authProvider === "local") {
-        user.authProvider = "google";
-      }
+      if (!user.authProvider || user.authProvider === "local") user.authProvider = "google";
       await user.save();
     }
 
-    // ✅ Set the cookie and redirect cleanly — no token in URL
+    // Set cookie AND pass token in URL — cookie works for same-domain
+    // future refreshes, token bootstraps the session immediately
     await createSessionCookie(user, res);
-    return res.redirect(`${FRONTEND_URL}/?oauth=success`);
+    const accessToken = createAccessToken(user);
+    return res.redirect(`${FRONTEND_URL}/?oauth=success&token=${accessToken}`);
   } catch (error) {
     logger.error("Google OAuth callback error", { error: error.message });
     return res.redirect(buildFrontendErrorRedirect("google_oauth_failed", "google"));
