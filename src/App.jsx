@@ -38,7 +38,6 @@ export default function App() {
 
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
-
   const [showCart, setShowCart] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showContact, setShowContact] = useState(false);
@@ -55,16 +54,12 @@ export default function App() {
     (async () => {
       try {
         const res = await api.get("/api/products");
-        const rawProducts = res.data;
         const productsWithReviews = await Promise.all(
-          rawProducts.map(async (p) => {
+          res.data.map(async (p) => {
             try {
               const reviewsRes = await api.get(`/api/reviews/${p._id}`);
               return { ...p, reviews: reviewsRes.data || [] };
-            } catch (error) {
-              if (error.response?.status && error.response.status !== 404) {
-                console.error(`Error loading reviews for product ${p._id}:`, error);
-              }
+            } catch {
               return { ...p, reviews: p.reviews || [] };
             }
           }),
@@ -86,68 +81,56 @@ export default function App() {
           : res.data?.items || [];
         setCart(cartData);
       } catch (err) {
-        if (err.response?.status === 404) {
-          setCart([]);
-          return;
+        if (err.response?.status !== 404) {
+          console.error("Error loading cart:", err);
         }
-
-        console.error("Error loading cart:", err);
       }
     })();
   }, []);
 
+  // ───────────────── Sync cart to backend
   useEffect(() => {
-    api.put("/api/cart", { items: cart }).catch((error) => {
-      if (error.response?.status !== 404) {
-        console.error(error);
-      }
+    api.put("/api/cart", { items: cart }).catch((err) => {
+      if (err.response?.status !== 404) console.error(err);
     });
   }, [cart]);
 
+  // ───────────────── Handle OAuth redirect
+  // Backend sets the cookie before redirecting to /?oauth=success
+  // No token ever touches the URL — just trigger a session refresh.
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
-    const oauth = params.get("oauth");
-    const error = params.get("error");
-    const provider = params.get("provider");
-    const oauthToken = hashParams.get("token") || params.get("token") || "";
-    const oauthProvider = hashParams.get("provider") || provider;
-    const hasOauthSignal = oauth === "1" || hashParams.get("oauth") === "1";
-    const oauthError = error || hashParams.get("error");
+    const oauthStatus = params.get("oauth");
+    const oauthError = params.get("oauth_error");
 
-    if (!hasOauthSignal && !oauthError) {
+    if (!oauthStatus && !oauthError) {
       if (oauthMessage) setOauthMessage("");
       return;
     }
 
-    const fingerprint = `${location.pathname}|${location.search}`;
+    const fingerprint = location.search;
     if (handledOauthRef.current === fingerprint) return;
     handledOauthRef.current = fingerprint;
 
     if (oauthError) {
-      setOauthMessage(
-        oauthProvider === "google"
-          ? "Google sign-in could not be completed."
-          : "Sign-in could not be completed.",
-      );
+      setOauthMessage("Sign-in could not be completed. Please try again.");
       navigate("/", { replace: true });
       return;
     }
 
-    setOauthMessage("Finishing your sign-in...");
-
-    (async () => {
-      try {
-        await completeOAuthLogin(oauthToken);
-        setOauthMessage("");
-        navigate("/", { replace: true });
-      } catch (completionError) {
-        console.error("OAuth completion failed:", completionError);
-        setOauthMessage("We could not finish your sign-in.");
-        navigate("/", { replace: true });
-      }
-    })();
-  }, [completeOAuthLogin, location.hash, location.pathname, location.search, navigate, oauthMessage]);
+    if (oauthStatus === "success") {
+      setOauthMessage("Finishing your sign-in...");
+      completeOAuthLogin()
+        .then(() => {
+          setOauthMessage("");
+          navigate("/", { replace: true });
+        })
+        .catch(() => {
+          setOauthMessage("We could not finish your sign-in. Please try again.");
+          navigate("/", { replace: true });
+        });
+    }
+  }, [location.search, completeOAuthLogin, navigate, oauthMessage]);
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {
@@ -212,10 +195,7 @@ export default function App() {
       setProducts((prev) =>
         prev.map((p) =>
           p._id === productId
-            ? {
-                ...p,
-                reviews: p.reviews.map((r) => (r._id === id ? updated : r)),
-              }
+            ? { ...p, reviews: p.reviews.map((r) => (r._id === id ? updated : r)) }
             : p,
         ),
       );
@@ -239,9 +219,10 @@ export default function App() {
     }
   };
 
+  // ───────────────── Loading state
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+      <div className="flex min-h-screen items-center justify-center bg-white px-4">
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-pink-500 border-t-transparent" />
           <p className="mt-4 text-sm font-medium text-gray-500">
@@ -257,12 +238,13 @@ export default function App() {
     (sum, item) => sum + Number(item.productId?.price || 0) * item.quantity,
     0,
   );
+  const cartItemCount = cart.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
     <div className="min-h-screen bg-white">
       {!isAdminRoute && (
         <Header
-          cartItemCount={cart.reduce((sum, i) => sum + i.quantity, 0)}
+          cartItemCount={cartItemCount}
           onShowLogin={() => setShowLogin(true)}
           onShowCart={() => setShowCart((p) => !p)}
         />
@@ -280,7 +262,6 @@ export default function App() {
             path="/"
             element={<HomePage products={products} addToCart={addToCart} />}
           />
-
           <Route
             path="/product/:id"
             element={
@@ -295,12 +276,8 @@ export default function App() {
           <Route path="/auth/callback" element={<OAuthCallbackPage />} />
           <Route
             path="/collections/:slug"
-            element={
-              <CollectionPage products={products} addToCart={addToCart} />
-            }
+            element={<CollectionPage products={products} addToCart={addToCart} />}
           />
-
-          {/* Orders */}
           <Route
             path="/orders"
             element={user ? <OrderHistory /> : <Navigate to="/" />}
@@ -310,30 +287,18 @@ export default function App() {
             element={user ? <OrderDetails /> : <Navigate to="/" />}
           />
           <Route path="/thank-you/:orderId" element={<ThankYou />} />
-
-          {/* Admin */}
           <Route
             path="/admin"
             element={
-              user && user.role === "admin" ? (
-                <AdminPage />
-              ) : (
-                <Navigate to="/" />
-              )
+              user?.role === "admin" ? <AdminPage /> : <Navigate to="/" />
             }
           />
           <Route
             path="/admin/dashboard"
             element={
-              user && user.role === "admin" ? (
-                <AdminDashboard />
-              ) : (
-                <Navigate to="/" />
-              )
+              user?.role === "admin" ? <AdminDashboard /> : <Navigate to="/" />
             }
           />
-
-          {/* Profile & Settings */}
           <Route
             path="/profile"
             element={
@@ -348,7 +313,6 @@ export default function App() {
               )
             }
           />
-
           <Route
             path="/settings"
             element={user ? <SettingsPage /> : <Navigate to="/" />}
@@ -362,7 +326,7 @@ export default function App() {
         <CartSidebar
           cart={cart}
           cartTotal={cartTotal}
-          cartItemCount={cart.reduce((sum, i) => sum + i.quantity, 0)}
+          cartItemCount={cartItemCount}
           onUpdateQuantity={updateQuantity}
           onRemoveItem={removeItem}
           user={user}
