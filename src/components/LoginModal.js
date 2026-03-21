@@ -246,6 +246,7 @@ export default function LoginModal({ onClose, onLogin }) {
                 </span>
                 <input
                   type="email"
+                  autoComplete="email" 
                   value={formData.email}
                   onChange={(event) =>
                     setFormData((current) => ({
