@@ -421,10 +421,9 @@ router.get("/google/callback", async (req, res) => {
       await user.save();
     }
 
-    const accessToken = await createSessionResponse(user, res);
+    await createSessionResponse(user, res);
     return res.redirect(
       buildFrontendAuthRedirect({
-        accessToken,
         provider: "google",
       })
     );
