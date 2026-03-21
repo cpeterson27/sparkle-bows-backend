@@ -41,7 +41,7 @@ function createAccessToken(user) {
       role: user.role,
     },
     JWT_SECRET,
-    { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
+    { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
   );
 }
 
@@ -59,7 +59,7 @@ function createPendingTwoFactorToken(user) {
       type: "two_factor_pending",
     },
     JWT_SECRET,
-    { expiresIn: TWO_FACTOR_PENDING_EXPIRES_IN }
+    { expiresIn: TWO_FACTOR_PENDING_EXPIRES_IN },
   );
 }
 
@@ -83,7 +83,10 @@ function toBase32(buffer) {
 }
 
 function fromBase32(input) {
-  const normalized = input.replace(/=+$/g, "").toUpperCase().replace(/[^A-Z2-7]/g, "");
+  const normalized = input
+    .replace(/=+$/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z2-7]/g, "");
   let bits = "";
 
   for (const character of normalized) {
@@ -128,26 +131,34 @@ function verifyTotp(secret, code) {
   const normalizedCode = String(code || "").replace(/\D/g, "");
   if (normalizedCode.length !== 6 || !secret) return false;
 
-  return [-1, 0, 1].some((offset) => generateTotp(secret, offset) === normalizedCode);
+  return [-1, 0, 1].some(
+    (offset) => generateTotp(secret, offset) === normalizedCode,
+  );
 }
 
 function generateRecoveryCodes() {
   return Array.from({ length: 8 }, () =>
-    crypto.randomBytes(5).toString("hex").toUpperCase()
+    crypto.randomBytes(5).toString("hex").toUpperCase(),
   );
 }
 
 function hashRecoveryCode(code) {
   return crypto
     .createHash("sha256")
-    .update(String(code || "").replace(/[^A-Z0-9]/gi, "").toUpperCase())
+    .update(
+      String(code || "")
+        .replace(/[^A-Z0-9]/gi, "")
+        .toUpperCase(),
+    )
     .digest("hex");
 }
 
 async function consumeRecoveryCode(user, code) {
   const hashedCode = hashRecoveryCode(code);
   const recoveryCodes = user.twoFactorRecoveryCodes || [];
-  const nextRecoveryCodes = recoveryCodes.filter((value) => value !== hashedCode);
+  const nextRecoveryCodes = recoveryCodes.filter(
+    (value) => value !== hashedCode,
+  );
 
   if (nextRecoveryCodes.length === recoveryCodes.length) {
     return false;
@@ -194,6 +205,8 @@ const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  domain:
+  process.env.NODE_ENV === "production" ? ".sparklebows.shop" : undefined,
   path: "/",
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
@@ -203,11 +216,14 @@ router.post("/signup", async (req, res) => {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
-      return res.status(400).json({ message: "Name, email, and password required" });
+      return res
+        .status(400)
+        .json({ message: "Name, email, and password required" });
     }
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) return res.status(400).json({ message: "User already exists" });
+    if (existingUser)
+      return res.status(400).json({ message: "User already exists" });
 
     const user = new User({
       name,
@@ -239,9 +255,12 @@ router.post("/signup", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "Email and password required" });
+    if (!email || !password)
+      return res.status(400).json({ message: "Email and password required" });
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password",
+    );
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -275,7 +294,8 @@ router.post("/login", async (req, res) => {
 router.post("/refresh-token", async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
-    if (!refreshToken) return res.status(401).json({ message: "No refresh token provided" });
+    if (!refreshToken)
+      return res.status(401).json({ message: "No refresh token provided" });
 
     const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
 
@@ -284,7 +304,8 @@ router.post("/refresh-token", async (req, res) => {
       userId: decoded.userId,
       revoked: false,
     });
-    if (!tokenDoc) return res.status(401).json({ message: "Invalid refresh token" });
+    if (!tokenDoc)
+      return res.status(401).json({ message: "Invalid refresh token" });
 
     const user = await User.findById(decoded.userId);
     if (!user) return res.status(401).json({ message: "User not found" });
@@ -311,7 +332,7 @@ router.get("/google/start", async (req, res) => {
       buildFrontendAuthRedirect({
         error: "google_not_configured",
         provider: "google",
-      })
+      }),
     );
   }
 
@@ -324,7 +345,9 @@ router.get("/google/start", async (req, res) => {
     prompt: "select_account",
   });
 
-  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  return res.redirect(
+    `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+  );
 });
 
 router.get("/google/callback", async (req, res) => {
@@ -337,7 +360,7 @@ router.get("/google/callback", async (req, res) => {
       buildFrontendAuthRedirect({
         error: "google_not_configured",
         provider: "google",
-      })
+      }),
     );
   }
 
@@ -349,7 +372,7 @@ router.get("/google/callback", async (req, res) => {
         buildFrontendAuthRedirect({
           error,
           provider: "google",
-        })
+        }),
       );
     }
 
@@ -358,7 +381,7 @@ router.get("/google/callback", async (req, res) => {
         buildFrontendAuthRedirect({
           error: "missing_google_code",
           provider: "google",
-        })
+        }),
       );
     }
 
@@ -375,7 +398,7 @@ router.get("/google/callback", async (req, res) => {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
-      }
+      },
     );
 
     const { access_token: providerAccessToken } = tokenResponse.data;
@@ -385,7 +408,7 @@ router.get("/google/callback", async (req, res) => {
         headers: {
           Authorization: `Bearer ${providerAccessToken}`,
         },
-      }
+      },
     );
 
     const profile = profileResponse.data;
@@ -394,7 +417,7 @@ router.get("/google/callback", async (req, res) => {
         buildFrontendAuthRedirect({
           error: "google_email_missing",
           provider: "google",
-        })
+        }),
       );
     }
 
@@ -436,7 +459,7 @@ router.get("/google/callback", async (req, res) => {
       buildFrontendAuthRedirect({
         error: "google_oauth_failed",
         provider: "google",
-      })
+      }),
     );
   }
 });
@@ -449,14 +472,18 @@ router.get("/me", async (req, res) => {
 
     if (!token && req.cookies.refreshToken) {
       try {
-        const decoded = jwt.verify(req.cookies.refreshToken, JWT_REFRESH_SECRET);
+        const decoded = jwt.verify(
+          req.cookies.refreshToken,
+          JWT_REFRESH_SECRET,
+        );
 
         const refreshTokenDoc = await RefreshToken.findOne({
           token: req.cookies.refreshToken,
           userId: decoded.userId,
           revoked: false,
         });
-        if (!refreshTokenDoc) return res.status(401).json({ message: "Invalid refresh token" });
+        if (!refreshTokenDoc)
+          return res.status(401).json({ message: "Invalid refresh token" });
 
         const user = await User.findById(decoded.userId);
         if (!user) return res.status(401).json({ message: "User not found" });
@@ -495,7 +522,8 @@ router.patch("/update-profile", verifyToken, async (req, res) => {
 
     if (email && email.toLowerCase() !== user.email) {
       const existingUser = await User.findOne({ email: email.toLowerCase() });
-      if (existingUser) return res.status(400).json({ message: "Email already in use" });
+      if (existingUser)
+        return res.status(400).json({ message: "Email already in use" });
       user.email = email.toLowerCase();
     }
 
@@ -522,11 +550,15 @@ router.patch("/change-password", verifyToken, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: "Current and new password are required" });
+      return res
+        .status(400)
+        .json({ message: "Current and new password are required" });
     }
 
     if (newPassword.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 6 characters" });
     }
 
     const user = await User.findById(req.user.userId).select("+password");
@@ -555,7 +587,9 @@ router.patch("/change-password", verifyToken, async (req, res) => {
 
 router.post("/2fa/setup", verifyToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select("+twoFactorTempSecret +twoFactorSecret +twoFactorRecoveryCodes");
+    const user = await User.findById(req.user.userId).select(
+      "+twoFactorTempSecret +twoFactorSecret +twoFactorRecoveryCodes",
+    );
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const secret = generateTwoFactorSecret();
@@ -568,17 +602,25 @@ router.post("/2fa/setup", verifyToken, async (req, res) => {
     });
   } catch (error) {
     logger.error("2FA setup error", { error: error.message });
-    return res.status(500).json({ message: "Could not start two-factor setup" });
+    return res
+      .status(500)
+      .json({ message: "Could not start two-factor setup" });
   }
 });
 
 router.post("/2fa/enable", verifyToken, async (req, res) => {
   try {
     const { code } = req.body;
-    const user = await User.findById(req.user.userId).select("+twoFactorTempSecret +twoFactorSecret +twoFactorRecoveryCodes");
+    const user = await User.findById(req.user.userId).select(
+      "+twoFactorTempSecret +twoFactorSecret +twoFactorRecoveryCodes",
+    );
     if (!user) return res.status(404).json({ message: "User not found" });
     if (!user.twoFactorTempSecret) {
-      return res.status(400).json({ message: "Start setup before enabling two-factor authentication" });
+      return res
+        .status(400)
+        .json({
+          message: "Start setup before enabling two-factor authentication",
+        });
     }
 
     if (!verifyTotp(user.twoFactorTempSecret, code)) {
@@ -602,18 +644,24 @@ router.post("/2fa/enable", verifyToken, async (req, res) => {
     });
   } catch (error) {
     logger.error("2FA enable error", { error: error.message });
-    return res.status(500).json({ message: "Could not enable two-factor authentication" });
+    return res
+      .status(500)
+      .json({ message: "Could not enable two-factor authentication" });
   }
 });
 
 router.post("/2fa/disable", verifyToken, async (req, res) => {
   try {
     const { password, code } = req.body;
-    const user = await User.findById(req.user.userId).select("+password +twoFactorSecret +twoFactorTempSecret +twoFactorRecoveryCodes");
+    const user = await User.findById(req.user.userId).select(
+      "+password +twoFactorSecret +twoFactorTempSecret +twoFactorRecoveryCodes",
+    );
     if (!user) return res.status(404).json({ message: "User not found" });
 
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      return res.status(400).json({ message: "Two-factor authentication is not enabled" });
+      return res
+        .status(400)
+        .json({ message: "Two-factor authentication is not enabled" });
     }
 
     if (!password || !(await user.comparePassword(password))) {
@@ -621,7 +669,9 @@ router.post("/2fa/disable", verifyToken, async (req, res) => {
     }
 
     const validTotp = verifyTotp(user.twoFactorSecret, code);
-    const validRecoveryCode = validTotp ? false : await consumeRecoveryCode(user, code);
+    const validRecoveryCode = validTotp
+      ? false
+      : await consumeRecoveryCode(user, code);
 
     if (!validTotp && !validRecoveryCode) {
       return res.status(400).json({ message: "Invalid verification code" });
@@ -642,18 +692,24 @@ router.post("/2fa/disable", verifyToken, async (req, res) => {
     });
   } catch (error) {
     logger.error("2FA disable error", { error: error.message });
-    return res.status(500).json({ message: "Could not disable two-factor authentication" });
+    return res
+      .status(500)
+      .json({ message: "Could not disable two-factor authentication" });
   }
 });
 
 router.post("/2fa/recovery-codes/regenerate", verifyToken, async (req, res) => {
   try {
     const { password, code } = req.body;
-    const user = await User.findById(req.user.userId).select("+password +twoFactorSecret +twoFactorRecoveryCodes");
+    const user = await User.findById(req.user.userId).select(
+      "+password +twoFactorSecret +twoFactorRecoveryCodes",
+    );
     if (!user) return res.status(404).json({ message: "User not found" });
 
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      return res.status(400).json({ message: "Two-factor authentication is not enabled" });
+      return res
+        .status(400)
+        .json({ message: "Two-factor authentication is not enabled" });
     }
 
     if (!password || !(await user.comparePassword(password))) {
@@ -661,7 +717,9 @@ router.post("/2fa/recovery-codes/regenerate", verifyToken, async (req, res) => {
     }
 
     const validTotp = verifyTotp(user.twoFactorSecret, code);
-    const validRecoveryCode = validTotp ? false : await consumeRecoveryCode(user, code);
+    const validRecoveryCode = validTotp
+      ? false
+      : await consumeRecoveryCode(user, code);
 
     if (!validTotp && !validRecoveryCode) {
       return res.status(400).json({ message: "Invalid verification code" });
@@ -676,8 +734,12 @@ router.post("/2fa/recovery-codes/regenerate", verifyToken, async (req, res) => {
       recoveryCodes,
     });
   } catch (error) {
-    logger.error("2FA recovery code regeneration error", { error: error.message });
-    return res.status(500).json({ message: "Could not regenerate recovery codes" });
+    logger.error("2FA recovery code regeneration error", {
+      error: error.message,
+    });
+    return res
+      .status(500)
+      .json({ message: "Could not regenerate recovery codes" });
   }
 });
 
@@ -694,14 +756,20 @@ router.post("/2fa/verify", async (req, res) => {
       return res.status(401).json({ message: "Invalid two-factor session" });
     }
 
-    const user = await User.findById(decoded.userId).select("+twoFactorSecret +twoFactorRecoveryCodes");
+    const user = await User.findById(decoded.userId).select(
+      "+twoFactorSecret +twoFactorRecoveryCodes",
+    );
     if (!user) return res.status(404).json({ message: "User not found" });
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      return res.status(400).json({ message: "Two-factor authentication is not enabled" });
+      return res
+        .status(400)
+        .json({ message: "Two-factor authentication is not enabled" });
     }
 
     const validTotp = verifyTotp(user.twoFactorSecret, code);
-    const validRecoveryCode = validTotp ? false : await consumeRecoveryCode(user, code);
+    const validRecoveryCode = validTotp
+      ? false
+      : await consumeRecoveryCode(user, code);
 
     if (!validTotp && !validRecoveryCode) {
       return res.status(400).json({ message: "Invalid verification code" });

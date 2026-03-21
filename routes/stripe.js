@@ -11,21 +11,23 @@ const router = express.Router();
 
 router.post("/create-payment-intent", optionalAuth, async (req, res) => {
   try {
-    const {
-      customerName,
-      customerEmail,
-      shippingInfo,
-      isGift,
-      giftMessage,
-    } = req.body;
+    const { customerName, customerEmail, shippingInfo, isGift, giftMessage } =
+      req.body;
 
     /* ------------------ VALIDATION ------------------ */
     if (!customerName || !customerEmail) {
       return res.status(400).json({ error: "Name and email are required" });
     }
 
-    if (!shippingInfo?.line1 || !shippingInfo?.city || !shippingInfo?.state || !shippingInfo?.postalCode) {
-      return res.status(400).json({ error: "Complete shipping address required" });
+    if (
+      !shippingInfo?.line1 ||
+      !shippingInfo?.city ||
+      !shippingInfo?.state ||
+      !shippingInfo?.postalCode
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Complete shipping address required" });
     }
 
     /* ------------------ LOAD CART ------------------ */
@@ -35,8 +37,25 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
     let cart;
     if (userId) {
       cart = await Cart.findOne({ userId }).populate("items.productId");
-    } else if (guestId) {
+    }
+    if (!cart && guestId) {
       cart = await Cart.findOne({ guestId }).populate("items.productId");
+    }
+
+    // Last resort: try finding by the refresh token cookie's userId
+    if (!cart && req.cookies?.refreshToken) {
+      try {
+        const jwt = require("jsonwebtoken");
+        const decoded = jwt.verify(
+          req.cookies.refreshToken,
+          process.env.JWT_REFRESH_SECRET,
+        );
+        if (decoded?.userId) {
+          cart = await Cart.findOne({ userId: decoded.userId }).populate(
+            "items.productId",
+          );
+        }
+      } catch (_) {}
     }
 
     if (!cart || cart.items.length === 0) {
@@ -110,7 +129,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       items: orderItems,
       subtotal,
       shippingCost,
-      tax: 0,          // filled by webhook
+      tax: 0, // filled by webhook
       total: subtotal + shippingCost,
       status: "pending",
       shippingAddress: shippingInfo,
