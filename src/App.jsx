@@ -32,7 +32,7 @@ import api from "./api/axios.config";
 import { AuthContext } from "./context/AuthContext";
 
 export default function App() {
-  const { user, loading: authLoading, completeOAuthLogin } = useContext(AuthContext);
+  const { user, loading: authLoading, refreshCurrentUser } = useContext(AuthContext);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -94,11 +94,11 @@ export default function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const accessToken = params.get("accessToken");
+    const oauth = params.get("oauth");
     const error = params.get("error");
     const provider = params.get("provider");
 
-    if (!accessToken && !error) {
+    if (!oauth && !error) {
       if (oauthMessage) setOauthMessage("");
       return;
     }
@@ -121,7 +121,7 @@ export default function App() {
 
     (async () => {
       try {
-        await completeOAuthLogin(accessToken);
+        await refreshCurrentUser();
         setOauthMessage("");
         navigate("/", { replace: true });
       } catch (completionError) {
@@ -130,7 +130,7 @@ export default function App() {
         navigate("/", { replace: true });
       }
     })();
-  }, [completeOAuthLogin, location.pathname, location.search, navigate, oauthMessage]);
+  }, [location.pathname, location.search, navigate, oauthMessage, refreshCurrentUser]);
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {
