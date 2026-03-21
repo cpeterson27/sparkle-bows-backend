@@ -61,7 +61,10 @@ export default function App() {
             try {
               const reviewsRes = await api.get(`/api/reviews/${p._id}`);
               return { ...p, reviews: reviewsRes.data || [] };
-            } catch {
+            } catch (error) {
+              if (error.response?.status && error.response.status !== 404) {
+                console.error(`Error loading reviews for product ${p._id}:`, error);
+              }
               return { ...p, reviews: p.reviews || [] };
             }
           }),
@@ -83,13 +86,22 @@ export default function App() {
           : res.data?.items || [];
         setCart(cartData);
       } catch (err) {
+        if (err.response?.status === 404) {
+          setCart([]);
+          return;
+        }
+
         console.error("Error loading cart:", err);
       }
     })();
   }, []);
 
   useEffect(() => {
-    api.put("/api/cart", { items: cart }).catch(console.error);
+    api.put("/api/cart", { items: cart }).catch((error) => {
+      if (error.response?.status !== 404) {
+        console.error(error);
+      }
+    });
   }, [cart]);
 
   useEffect(() => {

@@ -39,7 +39,10 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       const { data } = await api.post("/api/auth/refresh-token", {}, { withCredentials: true });
       applyAuthPayload(data);
-    } catch {
+    } catch (error) {
+      if (error.response?.status && error.response.status !== 401) {
+        console.error("Session refresh failed:", error);
+      }
       clearAuth();
     } finally {
       setLoading(false);
