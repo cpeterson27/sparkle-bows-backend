@@ -66,19 +66,15 @@ function createPendingTwoFactorToken(user) {
 function toBase32(buffer) {
   let bits = "";
   let output = "";
-
   for (const byte of buffer) {
     bits += byte.toString(2).padStart(8, "0");
   }
-
   while (bits.length % 5 !== 0) {
     bits += "0";
   }
-
   for (let index = 0; index < bits.length; index += 5) {
     output += BASE32_ALPHABET[parseInt(bits.slice(index, index + 5), 2)];
   }
-
   return output;
 }
 
@@ -88,18 +84,15 @@ function fromBase32(input) {
     .toUpperCase()
     .replace(/[^A-Z2-7]/g, "");
   let bits = "";
-
   for (const character of normalized) {
     const value = BASE32_ALPHABET.indexOf(character);
     if (value === -1) continue;
     bits += value.toString(2).padStart(5, "0");
   }
-
   const bytes = [];
   for (let index = 0; index + 8 <= bits.length; index += 8) {
     bytes.push(parseInt(bits.slice(index, index + 8), 2));
   }
-
   return Buffer.from(bytes);
 }
 
@@ -112,10 +105,8 @@ function generateTotp(secret, offset = 0) {
   const step = 30;
   const counter = Math.floor(Date.now() / 1000 / step) + offset;
   const buffer = Buffer.alloc(8);
-
   buffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
   buffer.writeUInt32BE(counter & 0xffffffff, 4);
-
   const digest = crypto.createHmac("sha1", key).update(buffer).digest();
   const offsetByte = digest[digest.length - 1] & 0xf;
   const code =
@@ -123,14 +114,12 @@ function generateTotp(secret, offset = 0) {
     ((digest[offsetByte + 1] & 0xff) << 16) |
     ((digest[offsetByte + 2] & 0xff) << 8) |
     (digest[offsetByte + 3] & 0xff);
-
   return String(code % 1000000).padStart(6, "0");
 }
 
 function verifyTotp(secret, code) {
   const normalizedCode = String(code || "").replace(/\D/g, "");
   if (normalizedCode.length !== 6 || !secret) return false;
-
   return [-1, 0, 1].some(
     (offset) => generateTotp(secret, offset) === normalizedCode,
   );
@@ -159,11 +148,7 @@ async function consumeRecoveryCode(user, code) {
   const nextRecoveryCodes = recoveryCodes.filter(
     (value) => value !== hashedCode,
   );
-
-  if (nextRecoveryCodes.length === recoveryCodes.length) {
-    return false;
-  }
-
+  if (nextRecoveryCodes.length === recoveryCodes.length) return false;
   user.twoFactorRecoveryCodes = nextRecoveryCodes;
   await user.save();
   return true;
@@ -182,23 +167,12 @@ function serializeUser(user) {
   };
 }
 
-function buildFrontendAuthRedirect(params = {}) {
+// ✅ Only used for error redirects now
+function buildFrontendErrorRedirect(error, provider = "") {
   const redirectUrl = new URL("/", FRONTEND_URL);
-  redirectUrl.searchParams.set("oauth", "1");
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      redirectUrl.searchParams.set(key, String(value));
-    }
-  });
+  redirectUrl.searchParams.set("oauth_error", error);
+  if (provider) redirectUrl.searchParams.set("provider", provider);
   return redirectUrl.toString();
-}
-
-async function createSessionResponse(user, res) {
-  const accessToken = createAccessToken(user);
-  const refreshToken = createRefreshToken(user);
-  await RefreshToken.create({ token: refreshToken, userId: user._id });
-  res.cookie("refreshToken", refreshToken, cookieOptions);
-  return accessToken;
 }
 
 const cookieOptions = {
@@ -206,24 +180,30 @@ const cookieOptions = {
   secure: process.env.NODE_ENV === "production",
   sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   domain:
-  process.env.NODE_ENV === "production" ? ".sparklebows.shop" : undefined,
+    process.env.NODE_ENV === "production" ? ".sparklebows.shop" : undefined,
   path: "/",
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
+async function createSessionCookie(user, res) {
+  const accessToken = createAccessToken(user);
+  const refreshToken = createRefreshToken(user);
+  await RefreshToken.create({ token: refreshToken, userId: user._id });
+  res.cookie("refreshToken", refreshToken, cookieOptions);
+  return accessToken;
+}
+
+// ------------------------
+// SIGNUP
+// ------------------------
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
     if (!name || !email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Name, email, and password required" });
+      return res.status(400).json({ message: "Name, email, and password required" });
     }
-
     const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser)
-      return res.status(400).json({ message: "User already exists" });
+    if (existingUser) return res.status(400).json({ message: "User already exists" });
 
     const user = new User({
       name,
@@ -232,13 +212,11 @@ router.post("/signup", async (req, res) => {
       addresses: [],
       role: "user",
     });
-
     await user.save();
 
     const accessToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
     await RefreshToken.create({ token: refreshToken, userId: user._id });
-
     res.cookie("refreshToken", refreshToken, cookieOptions);
 
     return res.status(201).json({
@@ -247,20 +225,21 @@ router.post("/signup", async (req, res) => {
       user: serializeUser(user),
     });
   } catch (error) {
-    console.error("Signup error:", error);
+    logger.error("Signup error", { error: error.message });
     return res.status(500).json({ message: "Registration failed" });
   }
 });
 
+// ------------------------
+// LOGIN
+// ------------------------
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password)
       return res.status(400).json({ message: "Email and password required" });
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
-    );
+    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -277,7 +256,6 @@ router.post("/login", async (req, res) => {
     const accessToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
     await RefreshToken.create({ token: refreshToken, userId: user._id });
-
     res.cookie("refreshToken", refreshToken, cookieOptions);
 
     return res.json({
@@ -286,11 +264,14 @@ router.post("/login", async (req, res) => {
       user: serializeUser(user),
     });
   } catch (error) {
-    console.error("Login error:", error);
+    logger.error("Login error", { error: error.message });
     return res.status(500).json({ message: "Login failed" });
   }
 });
 
+// ------------------------
+// REFRESH TOKEN
+// ------------------------
 router.post("/refresh-token", async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
@@ -298,42 +279,34 @@ router.post("/refresh-token", async (req, res) => {
       return res.status(401).json({ message: "No refresh token provided" });
 
     const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
-
     const tokenDoc = await RefreshToken.findOne({
       token: refreshToken,
       userId: decoded.userId,
       revoked: false,
     });
-    if (!tokenDoc)
-      return res.status(401).json({ message: "Invalid refresh token" });
+    if (!tokenDoc) return res.status(401).json({ message: "Invalid refresh token" });
 
     const user = await User.findById(decoded.userId);
     if (!user) return res.status(401).json({ message: "User not found" });
 
     const newAccessToken = createAccessToken(user);
-
-    return res.json({
-      accessToken: newAccessToken,
-      user: serializeUser(user),
-    });
+    return res.json({ accessToken: newAccessToken, user: serializeUser(user) });
   } catch (error) {
     logger.warn("Token refresh failed", { error: error.message });
     return res.status(401).json({ message: "Invalid refresh token" });
   }
 });
 
-router.get("/google/start", async (req, res) => {
+// ------------------------
+// GOOGLE OAUTH — start
+// ------------------------
+router.get("/google/start", (req, res) => {
   const clientId = readEnv("GOOGLE_OAUTH_CLIENT_ID");
   const clientSecret = readEnv("GOOGLE_OAUTH_CLIENT_SECRET");
   const redirectUri = readEnv("GOOGLE_OAUTH_REDIRECT_URI");
 
   if (!clientId || !clientSecret || !redirectUri) {
-    return res.redirect(
-      buildFrontendAuthRedirect({
-        error: "google_not_configured",
-        provider: "google",
-      }),
-    );
+    return res.redirect(buildFrontendErrorRedirect("google_not_configured", "google"));
   }
 
   const params = new URLSearchParams({
@@ -342,46 +315,31 @@ router.get("/google/start", async (req, res) => {
     response_type: "code",
     scope: "openid email profile",
     access_type: "online",
-    prompt: "consent select_account",
+    prompt: "select_account",
   });
 
-  return res.redirect(
-    `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
-  );
+  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
 });
 
+// ------------------------
+// GOOGLE OAUTH — callback
+// ✅ Professional pattern: set cookie, redirect cleanly, no token in URL
+// ------------------------
 router.get("/google/callback", async (req, res) => {
   const clientId = readEnv("GOOGLE_OAUTH_CLIENT_ID");
   const clientSecret = readEnv("GOOGLE_OAUTH_CLIENT_SECRET");
   const redirectUri = readEnv("GOOGLE_OAUTH_REDIRECT_URI");
 
   if (!clientId || !clientSecret || !redirectUri) {
-    return res.redirect(
-      buildFrontendAuthRedirect({
-        error: "google_not_configured",
-        provider: "google",
-      }),
-    );
+    return res.redirect(buildFrontendErrorRedirect("google_not_configured", "google"));
   }
 
   try {
     const { code, error } = req.query;
 
-    if (error) {
+    if (error || !code) {
       return res.redirect(
-        buildFrontendAuthRedirect({
-          error,
-          provider: "google",
-        }),
-      );
-    }
-
-    if (!code) {
-      return res.redirect(
-        buildFrontendAuthRedirect({
-          error: "missing_google_code",
-          provider: "google",
-        }),
+        buildFrontendErrorRedirect(error || "missing_google_code", "google"),
       );
     }
 
@@ -394,31 +352,18 @@ router.get("/google/callback", async (req, res) => {
         redirect_uri: redirectUri,
         grant_type: "authorization_code",
       }).toString(),
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      },
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
     );
 
     const { access_token: providerAccessToken } = tokenResponse.data;
     const profileResponse = await axios.get(
       "https://www.googleapis.com/oauth2/v3/userinfo",
-      {
-        headers: {
-          Authorization: `Bearer ${providerAccessToken}`,
-        },
-      },
+      { headers: { Authorization: `Bearer ${providerAccessToken}` } },
     );
 
     const profile = profileResponse.data;
     if (!profile?.email) {
-      return res.redirect(
-        buildFrontendAuthRedirect({
-          error: "google_email_missing",
-          provider: "google",
-        }),
-      );
+      return res.redirect(buildFrontendErrorRedirect("google_email_missing", "google"));
     }
 
     let user =
@@ -444,26 +389,18 @@ router.get("/google/callback", async (req, res) => {
       await user.save();
     }
 
-    const accessToken = await createSessionResponse(user, res);
-    const successUrl = new URL("/", FRONTEND_URL);
-    successUrl.hash = new URLSearchParams({
-      oauth: "1",
-      provider: "google",
-      token: accessToken,
-    }).toString();
-
-    return res.redirect(successUrl.toString());
+    // ✅ Set the cookie and redirect cleanly — no token in URL
+    await createSessionCookie(user, res);
+    return res.redirect(`${FRONTEND_URL}/?oauth=success`);
   } catch (error) {
     logger.error("Google OAuth callback error", { error: error.message });
-    return res.redirect(
-      buildFrontendAuthRedirect({
-        error: "google_oauth_failed",
-        provider: "google",
-      }),
-    );
+    return res.redirect(buildFrontendErrorRedirect("google_oauth_failed", "google"));
   }
 });
 
+// ------------------------
+// ME
+// ------------------------
 router.get("/me", async (req, res) => {
   try {
     let token = req.headers.authorization?.startsWith("Bearer ")
@@ -472,11 +409,7 @@ router.get("/me", async (req, res) => {
 
     if (!token && req.cookies.refreshToken) {
       try {
-        const decoded = jwt.verify(
-          req.cookies.refreshToken,
-          JWT_REFRESH_SECRET,
-        );
-
+        const decoded = jwt.verify(req.cookies.refreshToken, JWT_REFRESH_SECRET);
         const refreshTokenDoc = await RefreshToken.findOne({
           token: req.cookies.refreshToken,
           userId: decoded.userId,
@@ -484,19 +417,11 @@ router.get("/me", async (req, res) => {
         });
         if (!refreshTokenDoc)
           return res.status(401).json({ message: "Invalid refresh token" });
-
         const user = await User.findById(decoded.userId);
         if (!user) return res.status(401).json({ message: "User not found" });
-
         token = createAccessToken(user);
-
-        return res.json({
-          message: "Token refreshed",
-          token,
-          user: serializeUser(user),
-        });
-      } catch (refreshErr) {
-        console.warn("Refresh token verification failed", refreshErr);
+        return res.json({ message: "Token refreshed", token, user: serializeUser(user) });
+      } catch {
         return res.status(401).json({ message: "Invalid refresh token" });
       }
     }
@@ -506,34 +431,31 @@ router.get("/me", async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await User.findById(decoded.userId);
     if (!user) return res.status(401).json({ message: "User not found" });
-
     return res.json(serializeUser(user));
-  } catch (err) {
+  } catch {
     return res.status(401).json({ message: "Unauthorized" });
   }
 });
 
+// ------------------------
+// UPDATE PROFILE
+// ------------------------
 router.patch("/update-profile", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const { name, email, phone } = req.body;
-
     if (email && email.toLowerCase() !== user.email) {
       const existingUser = await User.findOne({ email: email.toLowerCase() });
-      if (existingUser)
-        return res.status(400).json({ message: "Email already in use" });
+      if (existingUser) return res.status(400).json({ message: "Email already in use" });
       user.email = email.toLowerCase();
     }
-
     if (name) user.name = name;
     if (phone !== undefined) user.phone = phone;
-
     await user.save();
 
     const newAccessToken = createAccessToken(user);
-
     return res.json({
       message: "Profile updated successfully",
       token: newAccessToken,
@@ -545,35 +467,28 @@ router.patch("/update-profile", verifyToken, async (req, res) => {
   }
 });
 
+// ------------------------
+// CHANGE PASSWORD
+// ------------------------
 router.patch("/change-password", verifyToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-
     if (!currentPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ message: "Current and new password are required" });
+      return res.status(400).json({ message: "Current and new password are required" });
     }
-
     if (newPassword.length < 6) {
-      return res
-        .status(400)
-        .json({ message: "Password must be at least 6 characters" });
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
-
     const user = await User.findById(req.user.userId).select("+password");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const isMatch = await user.comparePassword(currentPassword);
-    if (!isMatch) {
+    if (!(await user.comparePassword(currentPassword))) {
       return res.status(400).json({ message: "Current password is incorrect" });
     }
-
     user.password = newPassword;
     await user.save();
 
     const newAccessToken = createAccessToken(user);
-
     return res.json({
       message: "Password updated successfully",
       accessToken: newAccessToken,
@@ -585,6 +500,9 @@ router.patch("/change-password", verifyToken, async (req, res) => {
   }
 });
 
+// ------------------------
+// 2FA SETUP
+// ------------------------
 router.post("/2fa/setup", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select(
@@ -602,12 +520,13 @@ router.post("/2fa/setup", verifyToken, async (req, res) => {
     });
   } catch (error) {
     logger.error("2FA setup error", { error: error.message });
-    return res
-      .status(500)
-      .json({ message: "Could not start two-factor setup" });
+    return res.status(500).json({ message: "Could not start two-factor setup" });
   }
 });
 
+// ------------------------
+// 2FA ENABLE
+// ------------------------
 router.post("/2fa/enable", verifyToken, async (req, res) => {
   try {
     const { code } = req.body;
@@ -616,13 +535,8 @@ router.post("/2fa/enable", verifyToken, async (req, res) => {
     );
     if (!user) return res.status(404).json({ message: "User not found" });
     if (!user.twoFactorTempSecret) {
-      return res
-        .status(400)
-        .json({
-          message: "Start setup before enabling two-factor authentication",
-        });
+      return res.status(400).json({ message: "Start setup before enabling two-factor authentication" });
     }
-
     if (!verifyTotp(user.twoFactorTempSecret, code)) {
       return res.status(400).json({ message: "Invalid verification code" });
     }
@@ -635,7 +549,6 @@ router.post("/2fa/enable", verifyToken, async (req, res) => {
     await user.save();
 
     const accessToken = createAccessToken(user);
-
     return res.json({
       message: "Two-factor authentication enabled",
       accessToken,
@@ -644,12 +557,13 @@ router.post("/2fa/enable", verifyToken, async (req, res) => {
     });
   } catch (error) {
     logger.error("2FA enable error", { error: error.message });
-    return res
-      .status(500)
-      .json({ message: "Could not enable two-factor authentication" });
+    return res.status(500).json({ message: "Could not enable two-factor authentication" });
   }
 });
 
+// ------------------------
+// 2FA DISABLE
+// ------------------------
 router.post("/2fa/disable", verifyToken, async (req, res) => {
   try {
     const { password, code } = req.body;
@@ -657,22 +571,15 @@ router.post("/2fa/disable", verifyToken, async (req, res) => {
       "+password +twoFactorSecret +twoFactorTempSecret +twoFactorRecoveryCodes",
     );
     if (!user) return res.status(404).json({ message: "User not found" });
-
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      return res
-        .status(400)
-        .json({ message: "Two-factor authentication is not enabled" });
+      return res.status(400).json({ message: "Two-factor authentication is not enabled" });
     }
-
     if (!password || !(await user.comparePassword(password))) {
       return res.status(400).json({ message: "Current password is incorrect" });
     }
 
     const validTotp = verifyTotp(user.twoFactorSecret, code);
-    const validRecoveryCode = validTotp
-      ? false
-      : await consumeRecoveryCode(user, code);
-
+    const validRecoveryCode = validTotp ? false : await consumeRecoveryCode(user, code);
     if (!validTotp && !validRecoveryCode) {
       return res.status(400).json({ message: "Invalid verification code" });
     }
@@ -684,7 +591,6 @@ router.post("/2fa/disable", verifyToken, async (req, res) => {
     await user.save();
 
     const accessToken = createAccessToken(user);
-
     return res.json({
       message: "Two-factor authentication disabled",
       accessToken,
@@ -692,12 +598,13 @@ router.post("/2fa/disable", verifyToken, async (req, res) => {
     });
   } catch (error) {
     logger.error("2FA disable error", { error: error.message });
-    return res
-      .status(500)
-      .json({ message: "Could not disable two-factor authentication" });
+    return res.status(500).json({ message: "Could not disable two-factor authentication" });
   }
 });
 
+// ------------------------
+// 2FA RECOVERY CODES REGENERATE
+// ------------------------
 router.post("/2fa/recovery-codes/regenerate", verifyToken, async (req, res) => {
   try {
     const { password, code } = req.body;
@@ -705,22 +612,15 @@ router.post("/2fa/recovery-codes/regenerate", verifyToken, async (req, res) => {
       "+password +twoFactorSecret +twoFactorRecoveryCodes",
     );
     if (!user) return res.status(404).json({ message: "User not found" });
-
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      return res
-        .status(400)
-        .json({ message: "Two-factor authentication is not enabled" });
+      return res.status(400).json({ message: "Two-factor authentication is not enabled" });
     }
-
     if (!password || !(await user.comparePassword(password))) {
       return res.status(400).json({ message: "Current password is incorrect" });
     }
 
     const validTotp = verifyTotp(user.twoFactorSecret, code);
-    const validRecoveryCode = validTotp
-      ? false
-      : await consumeRecoveryCode(user, code);
-
+    const validRecoveryCode = validTotp ? false : await consumeRecoveryCode(user, code);
     if (!validTotp && !validRecoveryCode) {
       return res.status(400).json({ message: "Invalid verification code" });
     }
@@ -729,24 +629,19 @@ router.post("/2fa/recovery-codes/regenerate", verifyToken, async (req, res) => {
     user.twoFactorRecoveryCodes = recoveryCodes.map(hashRecoveryCode);
     await user.save();
 
-    return res.json({
-      message: "Recovery codes regenerated",
-      recoveryCodes,
-    });
+    return res.json({ message: "Recovery codes regenerated", recoveryCodes });
   } catch (error) {
-    logger.error("2FA recovery code regeneration error", {
-      error: error.message,
-    });
-    return res
-      .status(500)
-      .json({ message: "Could not regenerate recovery codes" });
+    logger.error("2FA recovery code regeneration error", { error: error.message });
+    return res.status(500).json({ message: "Could not regenerate recovery codes" });
   }
 });
 
+// ------------------------
+// 2FA VERIFY
+// ------------------------
 router.post("/2fa/verify", async (req, res) => {
   try {
     const { twoFactorToken, code } = req.body;
-
     if (!twoFactorToken) {
       return res.status(400).json({ message: "Two-factor token is required" });
     }
@@ -761,16 +656,11 @@ router.post("/2fa/verify", async (req, res) => {
     );
     if (!user) return res.status(404).json({ message: "User not found" });
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
-      return res
-        .status(400)
-        .json({ message: "Two-factor authentication is not enabled" });
+      return res.status(400).json({ message: "Two-factor authentication is not enabled" });
     }
 
     const validTotp = verifyTotp(user.twoFactorSecret, code);
-    const validRecoveryCode = validTotp
-      ? false
-      : await consumeRecoveryCode(user, code);
-
+    const validRecoveryCode = validTotp ? false : await consumeRecoveryCode(user, code);
     if (!validTotp && !validRecoveryCode) {
       return res.status(400).json({ message: "Invalid verification code" });
     }
@@ -778,7 +668,6 @@ router.post("/2fa/verify", async (req, res) => {
     const accessToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
     await RefreshToken.create({ token: refreshToken, userId: user._id });
-
     res.cookie("refreshToken", refreshToken, cookieOptions);
 
     return res.json({
@@ -792,14 +681,14 @@ router.post("/2fa/verify", async (req, res) => {
   }
 });
 
+// ------------------------
+// DELETE ACCOUNT
+// ------------------------
 router.delete("/delete-account", verifyToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     await Promise.all([
       RefreshToken.deleteMany({ userId }),
@@ -809,7 +698,6 @@ router.delete("/delete-account", verifyToken, async (req, res) => {
     ]);
 
     res.clearCookie("refreshToken", cookieOptions);
-
     return res.json({ message: "Account deleted successfully" });
   } catch (error) {
     logger.error("Account deletion error", { error: error.message });
@@ -817,13 +705,15 @@ router.delete("/delete-account", verifyToken, async (req, res) => {
   }
 });
 
+// ------------------------
+// LOGOUT
+// ------------------------
 router.post("/logout", async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
     if (refreshToken) {
       await RefreshToken.updateOne({ token: refreshToken }, { revoked: true });
     }
-
     res.clearCookie("refreshToken", cookieOptions);
     return res.json({ message: "Logged out successfully" });
   } catch (error) {
