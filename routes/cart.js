@@ -6,13 +6,27 @@ const Product = require("../models/productModel");
 
 const router = express.Router();
 
-// generate a new signed guest ID
+// ------------------------
+// Generate a new signed guest ID
+// ------------------------
 const generateGuestId = () =>
   Math.random().toString(36).substring(2, 15) +
   Math.random().toString(36).substring(2, 15);
 
 // ------------------------
+// Cookie options for guest cart
+// ------------------------
+const guestCookieOptions = {
+  signed: true,
+  httpOnly: true,
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production",
+  maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+};
+
+// ------------------------
 // GET current cart (guest or logged in) + totals
+// This route intentionally supports both authenticated and guest sessions.
 // ------------------------
 router.get("/", optionalAuth, async (req, res) => {
   try {
@@ -20,7 +34,7 @@ router.get("/", optionalAuth, async (req, res) => {
     let cart;
 
     if (req.user) {
-      // merge guest cart into user cart if exists
+      // Merge guest cart into user cart if exists
       if (signedGuestId) {
         const guestCart = await Cart.findOne({ guestId: signedGuestId });
         if (guestCart) {
@@ -40,24 +54,18 @@ router.get("/", optionalAuth, async (req, res) => {
 
       cart = await Cart.findOne({ userId: req.user._id }).populate("items.productId");
     } else {
-      // guest not logged in
+      // Guest cart
       cart = await Cart.findOne({ guestId: signedGuestId });
       if (!cart) {
         const newGuestId = generateGuestId();
         cart = await Cart.create({ guestId: newGuestId, items: [] });
-        res.cookie("guestId", newGuestId, {
-          signed: true,
-          httpOnly: true,
-          sameSite: "lax",
-          secure: process.env.NODE_ENV === "production",
-          maxAge: 1000 * 60 * 60 * 24 * 30,
-        });
+        res.cookie("guestId", newGuestId, guestCookieOptions);
       }
       cart = await cart.populate("items.productId");
     }
 
     // ------------------------
-    // Calculate subtotal, shipping, grand total
+    // Calculate totals
     // ------------------------
     const itemsWithData = cart.items.map((item) => ({
       ...item.toObject(),
@@ -91,8 +99,8 @@ router.get("/", optionalAuth, async (req, res) => {
 router.put("/", optionalAuth, async (req, res) => {
   try {
     const items = req.body.items;
-
     let updatedCart;
+
     if (req.user) {
       updatedCart = await Cart.findOneAndUpdate(
         { userId: req.user._id },
@@ -103,14 +111,9 @@ router.put("/", optionalAuth, async (req, res) => {
       let signedGuestId = req.signedCookies?.guestId;
       if (!signedGuestId) {
         signedGuestId = generateGuestId();
-        res.cookie("guestId", signedGuestId, {
-          signed: true,
-          httpOnly: true,
-          sameSite: "lax",
-          secure: process.env.NODE_ENV === "production",
-          maxAge: 1000 * 60 * 60 * 24 * 30,
-        });
+        res.cookie("guestId", signedGuestId, guestCookieOptions);
       }
+
       updatedCart = await Cart.findOneAndUpdate(
         { guestId: signedGuestId },
         { items },
@@ -118,13 +121,19 @@ router.put("/", optionalAuth, async (req, res) => {
       ).populate("items.productId");
     }
 
+    // ------------------------
     // Calculate totals
+    // ------------------------
     const itemsWithData = updatedCart.items.map((item) => ({
       ...item.toObject(),
       price: item.productId?.price || 0,
       inventory: item.productId?.inventory || 0,
     }));
-    const subtotal = itemsWithData.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+
+    const subtotal = itemsWithData.reduce(
+      (sum, item) => sum + (item.price || 0) * item.quantity,
+      0
+    );
     const totalItems = itemsWithData.reduce((sum, item) => sum + item.quantity, 0);
     const shippingCost = calculateShipping(subtotal, totalItems);
     const grandTotal = subtotal + shippingCost;

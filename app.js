@@ -67,6 +67,8 @@ app.use(morganMiddleware);
 
 // ------------------------
 // ROUTES
+// Keep these mounts explicit so production and local environments expose
+// the same API surface during storefront auth and checkout flows.
 // ------------------------
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/products", require("./routes/productRoutes"));

@@ -2,65 +2,74 @@ const express = require("express");
 const Review = require("../models/Review");
 const router = express.Router();
 
-// POST /api/reviews — add a new review
+// ------------------------
+// POST /api/reviews — Add a new review
+// ------------------------
 router.post("/", async (req, res) => {
-  console.log("POST /api/reviews body:", req.body);
-
   try {
-    // Basic validation
     const { productId, userName, rating, text } = req.body;
+
+    // Validate required fields
     if (!productId || !userName || rating == null || text == null) {
-      return res
-        .status(400)
-        .json({ error: "Missing required fields", body: req.body });
+      return res.status(400).json({
+        error: "Missing required fields",
+        required: ["productId", "userName", "rating", "text"],
+      });
     }
 
-    const review = new Review(req.body);
+    const review = new Review({ productId, userName, rating, text });
     const savedReview = await review.save();
 
-    console.log("Saved review:", savedReview);
-    res.status(201).json(savedReview);
+    return res.status(201).json(savedReview);
   } catch (err) {
-    console.error("Error in POST /api/reviews:", err);
-    res.status(500).json({ error: "Error saving review", details: err.message });
+    console.error("Error saving review:", err);
+    return res.status(500).json({
+      error: "Error saving review",
+      details: err.message,
+    });
   }
 });
 
-// GET /api/reviews/:productId — get reviews for a product
+// ------------------------
+// GET /api/reviews/:productId — Get all reviews for a product
+// Product pages rely on this endpoint during initial storefront hydration.
+// ------------------------
 router.get("/:productId", async (req, res) => {
   try {
     const reviews = await Review.find({ productId: req.params.productId });
-    res.json(reviews);
+    return res.json(reviews);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error fetching reviews" });
+    console.error("Error fetching reviews:", err);
+    return res.status(500).json({ error: "Error fetching reviews" });
   }
 });
 
-// PATCH /api/reviews/:reviewId — update a review
+// ------------------------
+// PATCH /api/reviews/:reviewId — Update a review
+// ------------------------
 router.patch("/:reviewId", async (req, res) => {
   try {
     const { reviewId } = req.params;
     const updateFields = req.body;
 
-    const updatedReview = await Review.findByIdAndUpdate(
-      reviewId,
-      updateFields,
-      { new: true } // return the updated document
-    );
+    const updatedReview = await Review.findByIdAndUpdate(reviewId, updateFields, {
+      new: true, // return updated document
+    });
 
     if (!updatedReview) {
       return res.status(404).json({ error: "Review not found" });
     }
 
-    res.json(updatedReview);
+    return res.json(updatedReview);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error updating review" });
+    console.error("Error updating review:", err);
+    return res.status(500).json({ error: "Error updating review" });
   }
 });
 
-// DELETE /api/reviews/:reviewId — delete a review
+// ------------------------
+// DELETE /api/reviews/:reviewId — Delete a review
+// ------------------------
 router.delete("/:reviewId", async (req, res) => {
   try {
     const { reviewId } = req.params;
@@ -71,15 +80,14 @@ router.delete("/:reviewId", async (req, res) => {
       return res.status(404).json({ error: "Review not found" });
     }
 
-    res.json({ 
-      message: "Review deleted successfully", 
-      deletedReview 
+    return res.json({
+      message: "Review deleted successfully",
+      deletedReview,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error deleting review" });
+    console.error("Error deleting review:", err);
+    return res.status(500).json({ error: "Error deleting review" });
   }
 });
-
 
 module.exports = router;
