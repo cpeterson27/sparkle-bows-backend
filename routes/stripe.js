@@ -1,123 +1,142 @@
-// routes/stripe.js
 const express = require("express");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const Product = require("../models/productModel");
+const Order = require("../models/orderModel");
+const Cart = require("../models/cartModel");
 const { optionalAuth } = require("../middleware/auth");
 const { calculateShipping } = require("../utils/shippingCalculator");
+const logger = require("../logger");
 
 const router = express.Router();
 
-// ------------------------
-// CREATE PAYMENT INTENT
-// ------------------------
 router.post("/create-payment-intent", optionalAuth, async (req, res) => {
   try {
-    const userId = req.user?._id?.toString() || null;
-    let guestId = req.cookies?.guestId || null;
+    const {
+      customerName,
+      customerEmail,
+      shippingInfo,
+      isGift,
+      giftMessage,
+    } = req.body;
 
-    // Generate a guestId if neither logged-in nor existing cookie
-    if (!userId && !guestId) {
-      const newGuestId = Math.random().toString(36).substring(2, 15);
-      res.cookie("guestId", newGuestId, { httpOnly: true, sameSite: "lax" });
-      guestId = newGuestId;
+    /* ------------------ VALIDATION ------------------ */
+    if (!customerName || !customerEmail) {
+      return res.status(400).json({ error: "Name and email are required" });
     }
 
-    const { items: frontendItems, customerName, customerEmail, shippingInfo } = req.body;
-
-    if (!frontendItems || frontendItems.length === 0) {
-      return res.status(400).json({ error: "No items to purchase" });
+    if (!shippingInfo?.line1 || !shippingInfo?.city || !shippingInfo?.state || !shippingInfo?.postalCode) {
+      return res.status(400).json({ error: "Complete shipping address required" });
     }
 
-    // ------------------------
-    // Validate items & calculate subtotal
-    // ------------------------
-    const validatedItems = [];
+    /* ------------------ LOAD CART ------------------ */
+    const userId = req.user?.userId;
+    const guestId = req.signedCookies?.guestId;
+
+    let cart;
+    if (userId) {
+      cart = await Cart.findOne({ userId }).populate("items.productId");
+    } else if (guestId) {
+      cart = await Cart.findOne({ guestId }).populate("items.productId");
+    }
+
+    if (!cart || cart.items.length === 0) {
+      return res.status(400).json({ error: "Cart is empty" });
+    }
+
+    /* ------------------ VALIDATE INVENTORY ------------------ */
     let subtotal = 0;
+    const orderItems = [];
 
-    for (const item of frontendItems) {
-      const product = await Product.findById(item.productId);
-      if (!product) return res.status(400).json({ error: `Product not found: ${item.name}` });
-      if (item.quantity > product.inventory)
-        return res.status(400).json({ error: `Not enough stock for: ${product.name}` });
+    for (const item of cart.items) {
+      const product = await Product.findById(item.productId?._id);
+      if (!product) {
+        return res.status(400).json({ error: "Product no longer exists" });
+      }
 
-      validatedItems.push({
-        productId: product._id.toString(),
+      if (product.inventory < item.quantity) {
+        return res.status(400).json({
+          error: `Not enough stock for ${product.name}`,
+        });
+      }
+
+      subtotal += product.price * item.quantity;
+
+      orderItems.push({
+        productId: product._id,
         name: product.name,
         quantity: item.quantity,
         price: product.price,
       });
-
-      subtotal += product.price * item.quantity;
     }
 
-    // ------------------------
-    // Calculate shipping server-side
-    // ------------------------
-    const totalItems = frontendItems.reduce((sum, i) => sum + i.quantity, 0);
-    const shippingCost = calculateShipping(subtotal, totalItems);
+    /* ------------------ SHIPPING ------------------ */
+    const totalQty = orderItems.reduce((sum, i) => sum + i.quantity, 0);
+    const shippingCost = calculateShipping(subtotal, totalQty);
 
-    // ------------------------
-    // Determine final shipping address
-    // ------------------------
-    let finalShipping = undefined;
+    /* ------------------ STRIPE PAYMENT INTENT ------------------ */
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round((subtotal + shippingCost) * 100), // BEFORE TAX
+      currency: "usd",
+      automatic_payment_methods: { enabled: true },
 
-    if (shippingInfo) {
-      // frontend sent a "different address"
-      finalShipping = {
-        name: shippingInfo.name,
+      automatic_tax: { enabled: true },
+
+      shipping: {
+        name: customerName,
         address: {
           line1: shippingInfo.line1,
-          line2: shippingInfo.line2 || "",
+          line2: shippingInfo.line2 || undefined,
           city: shippingInfo.city,
           state: shippingInfo.state,
           postal_code: shippingInfo.postalCode,
           country: shippingInfo.country || "US",
         },
-      };
-    } else if (req.user?.address) {
-      // logged-in user's saved shipping
-      finalShipping = {
-        name: req.user.name,
-        address: {
-          line1: req.user.address.line1 || "",
-          line2: req.user.address.line2 || "",
-          city: req.user.address.city || "",
-          state: req.user.address.state || "",
-          postal_code: req.user.address.postalCode || "",
-          country: req.user.address.country || "US",
-        },
-      };
-    }
-
-    // ------------------------
-    // Create Stripe PaymentIntent
-    // ------------------------
-    const totalAmount = subtotal + shippingCost;
-    const amountInCents = Math.round(totalAmount * 100);
-
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
-      currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      receipt_email: customerEmail || undefined,
-      metadata: {
-        userId: userId || null,
-        guestId: userId ? null : guestId,
-        customerEmail: customerEmail || "",
-        customerName: customerName || "",
-        items: JSON.stringify(validatedItems),
-        subtotal: subtotal.toFixed(2),
-        shippingCost: shippingCost.toFixed(2),
-        tax: (0).toFixed(2),
-        total: totalAmount.toFixed(2),
       },
-      shipping: finalShipping,
+
+      receipt_email: customerEmail,
+
+      metadata: {
+        orderType: "checkout",
+        isGift: isGift ? "true" : "false",
+        giftMessage: giftMessage || "",
+      },
     });
 
-    return res.json({ clientSecret: paymentIntent.client_secret });
+    /* ------------------ CREATE ORDER (TAX VIA WEBHOOK) ------------------ */
+    const order = await Order.create({
+      userId: userId || null,
+      customerName,
+      customerEmail,
+      items: orderItems,
+      subtotal,
+      shippingCost,
+      tax: 0,          // filled by webhook
+      total: subtotal + shippingCost,
+      status: "pending",
+      shippingAddress: shippingInfo,
+      stripePaymentIntentId: paymentIntent.id,
+      isGift: !!isGift,
+      giftMessage: giftMessage || "",
+    });
+
+    logger.info("Stripe PI created", {
+      paymentIntentId: paymentIntent.id,
+      orderId: order._id,
+    });
+
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      orderId: order._id,
+    });
   } catch (err) {
-    console.error("Stripe PaymentIntent error:", err);
-    return res.status(500).json({ error: "Failed to create payment intent" });
+    logger.error("Stripe create-payment-intent failed", {
+      message: err.message,
+      stack: err.stack,
+    });
+
+    res.status(500).json({
+      error: "Could not create payment intent",
+    });
   }
 });
 

@@ -6,11 +6,17 @@ const mongoSanitize = require("express-mongo-sanitize");
 const cookieParser = require("cookie-parser");
 const logger = require("./logger");
 const morganMiddleware = require("./middleware/morganLogger");
-const { generalLimiter, authLimiter, refreshTokenLimiter, cartLimiter } = require("./middleware/rateLimit");
-const userRoutes = require("./routes/user");          // ✅ NEW
+const {
+  generalLimiter,
+  authLimiter,
+  refreshTokenLimiter,
+  cartLimiter,
+} = require("./middleware/rateLimit");
+const userRoutes = require("./routes/user");
 const validationRoutes = require("./routes/validation");
 
 const app = express();
+
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:3000",
   process.env.FRONTEND_CUSTOM_DOMAIN || "https://www.sparklebows.shop",
@@ -52,7 +58,7 @@ app.use("/api/auth/refresh-token", refreshTokenLimiter);
 app.use("/api/cart", cartLimiter);
 
 // ------------------------
-// ⚠️ CRITICAL: Stripe webhook MUST come BEFORE body parsers
+// STRIPE WEBHOOK — must come BEFORE body parsers
 // ------------------------
 app.use("/api/stripe/webhook", require("./routes/stripeWebhook"));
 
@@ -67,8 +73,6 @@ app.use(morganMiddleware);
 
 // ------------------------
 // ROUTES
-// Keep these mounts explicit so production and local environments expose
-// the same API surface during storefront auth and checkout flows.
 // ------------------------
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/products", require("./routes/productRoutes"));
@@ -80,9 +84,9 @@ app.use("/api/admin", require("./routes/admin"));
 app.use("/api/stripe", require("./routes/stripe"));
 app.use("/api/expenses", require("./routes/expenses"));
 app.use("/api/checkout", require("./routes/checkout"));
-app.use("/api/user", userRoutes);           // ✅ NEW - Handles /api/user/address
+app.use("/api/user", userRoutes);
 app.use("/api/leads", require("./routes/leads"));
-app.use("/api", validationRoutes); 
+app.use("/api/validation", validationRoutes); // ✅ FIXED: was "/api" (too broad)
 
 // ------------------------
 // HEALTH CHECK
@@ -96,11 +100,14 @@ app.get("/api/health", (req, res) => {
 });
 
 // ------------------------
-// 404 HANDLER
+// 404 HANDLER — ✅ FIXED: no wildcard glob, just checks path prefix
 // ------------------------
-app.use("/api/*", (req, res) => {
-  logger.warn(`404 - API route not found: ${req.method} ${req.path}`);
-  res.status(404).json({ error: "API route not found", path: req.path });
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    logger.warn(`404 - API route not found: ${req.method} ${req.path}`);
+    return res.status(404).json({ error: "API route not found", path: req.path });
+  }
+  next();
 });
 
 // ------------------------
@@ -116,4 +123,3 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app;
-// force deploy Fri Mar 20 21:12:14 CDT 2026

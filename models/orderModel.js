@@ -6,6 +6,10 @@ const orderItemSchema = new mongoose.Schema({
     ref: "Product",
     required: true 
   },
+  name: { 
+    type: String, 
+    required: true 
+  },
   quantity: { 
     type: Number, 
     required: true, 
@@ -16,10 +20,10 @@ const orderItemSchema = new mongoose.Schema({
     required: true, 
     min: 0 
   },
-  // Cost of product for profit calculations (COGS)
-  cost: {
-    type: Number,
-    default: 0,
+  cost: { 
+    type: Number, 
+    default: 0, 
+    min: 0 
   },
 });
 
@@ -27,11 +31,13 @@ const orderSchema = new mongoose.Schema(
   {
     userId: { 
       type: mongoose.Schema.Types.ObjectId, 
-      ref: "User",
-      default: null
+      ref: "User", 
+      default: null 
     },
+
     customerName: { type: String, required: true },
     customerEmail: { type: String, required: true },
+
     items: [orderItemSchema],
 
     subtotal: { type: Number, required: true, min: 0 },
@@ -40,22 +46,29 @@ const orderSchema = new mongoose.Schema(
     stripeFee: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },
 
-    totalCost: { type: Number, default: 0 },   // COGS
+    totalCost: { type: Number, default: 0 },
     totalProfit: { type: Number, default: 0 },
 
     status: { 
       type: String, 
-      enum: ["pending", "processing", "shipped", "delivered", "cancelled"],
+      enum: ["pending", "processing", "shipped", "delivered", "cancelled"], 
       default: "processing" 
     },
 
+    // ✅ UPDATED SHIPPING ADDRESS - Matches Frontend
     shippingAddress: {
-      street: { type: String, default: "" },
+      name: { type: String, default: "" },
+      line1: { type: String, default: "" },
+      line2: { type: String, default: "" },
       city: { type: String, default: "" },
       state: { type: String, default: "" },
-      zipCode: { type: String, default: "" },
-      country: { type: String, default: "USA" },
+      postalCode: { type: String, default: "" },
+      country: { type: String, default: "US" },
     },
+
+    // ✅ NEW FIELDS - Gift Options
+    isGift: { type: Boolean, default: false },
+    giftMessage: { type: String, default: "" },
 
     trackingNumber: { type: String, default: "" },
     carrier: { type: String, default: "" },
@@ -63,36 +76,35 @@ const orderSchema = new mongoose.Schema(
     stripePaymentIntentId: { type: String },
     stripeChargeId: { type: String },
 
+    waveInvoiceId: { type: String, default: null },
+    waveInvoiceNumber: { type: String, default: null },
+    waveInvoicePdfUrl: { type: String, default: null },
+
     customerNotified: { type: Boolean, default: false },
     ownerNotified: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
-// -------------------------
-// Pre-save hook for financials
-// -------------------------
 orderSchema.pre("save", function (next) {
   if (
-    this.isModified("items") || 
-    this.isModified("subtotal") || 
-    this.isModified("shippingCost") || 
-    this.isModified("tax") || 
+    this.isModified("items") ||
+    this.isModified("subtotal") ||
+    this.isModified("shippingCost") ||
+    this.isModified("tax") ||
     this.isModified("total")
   ) {
-    // 1️⃣ Total cost of items (COGS)
     this.totalCost = parseFloat(
-      this.items.reduce((sum, item) => sum + item.cost * item.quantity, 0).toFixed(2)
+      this.items.reduce((sum, item) => sum + (item.cost || 0) * item.quantity, 0).toFixed(2)
     );
 
-    // 2️⃣ Total: subtotal + shipping + tax (ensure consistent with metadata from checkout)
     this.total = parseFloat((this.subtotal + this.shippingCost + this.tax).toFixed(2));
 
-    // 3️⃣ Stripe fee (2.9% + $0.30)
     this.stripeFee = parseFloat((this.total * 0.029 + 0.3).toFixed(2));
 
-    // 4️⃣ Profit = Revenue - (COGS + Stripe Fee + Shipping)
-    this.totalProfit = parseFloat((this.total - (this.totalCost + this.stripeFee + this.shippingCost)).toFixed(2));
+    this.totalProfit = parseFloat(
+      (this.total - (this.totalCost + this.stripeFee + this.shippingCost)).toFixed(2)
+    );
   }
 
   next();

@@ -21,6 +21,7 @@
     "@sendgrid/mail": "^8.1.6",
     "@stripe/react-stripe-js": "^5.4.1",
     "@stripe/stripe-js": "^8.6.3",
+    "axios": "^1.13.3",
     "bcryptjs": "^2.4.3",
     "body-parser": "^2.2.2",
     "cloudinary": "^2.9.0",

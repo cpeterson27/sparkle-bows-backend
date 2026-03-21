@@ -144,4 +144,4 @@ async function createStripeExpense(orderId, orderTotal) {
   }
 }
 
-module.exports = { router, createStripeExpense };
+module.exports = router;

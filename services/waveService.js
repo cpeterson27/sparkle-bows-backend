@@ -41,21 +41,19 @@ class WaveService {
     `;
 
     // Map your cart items to Wave line items
-    const lineItems = items.map((item, index) => ({
-      productId: null, // Wave product ID (optional)
+    const lineItems = items.map((item) => ({
+      productId: null,
       description: item.name,
       unitPrice: item.price,
       quantity: item.quantity,
-      // taxes: [], // Add if you have tax configuration
     }));
 
     const variables = {
       input: {
-        businessId: process.env.WAVE_BUSINESS_ID, // Your Wave business ID
-        customerId: customerId || null, // Wave customer ID (optional)
+        businessId: process.env.WAVE_BUSINESS_ID,
+        customerId: customerId || null,
         invoiceDate: new Date().toISOString().split('T')[0],
         items: lineItems,
-        // Optional: Add customer details if no customerId
         customer: customerId ? null : {
           name: customerName,
           email: customerEmail,
@@ -119,7 +117,6 @@ class WaveService {
         return customers[0].node.id;
       }
 
-      // Create customer if not found
       return await this.createCustomer(email, name);
     } catch (error) {
       console.error('Wave API Error:', error);
@@ -157,56 +154,3 @@ class WaveService {
 }
 
 module.exports = new WaveService();
-
-// =====================================================
-// 3. UPDATE YOUR STRIPE WEBHOOK OR SUCCESS HANDLER
-// File: backend/routes/stripe.js (or wherever you handle successful payments)
-// =====================================================
-
-const waveService = require('../services/waveService');
-
-// After successful Stripe payment:
-router.post('/webhook', async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  // Handle successful payment
-  if (event.type === 'payment_intent.succeeded') {
-    const paymentIntent = event.data.object;
-
-    // Get order details from your database
-    const order = await Order.findOne({ stripePaymentIntentId: paymentIntent.id });
-
-    if (order) {
-      try {
-        // Create invoice in Wave
-        const invoice = await waveService.createInvoice({
-          customerId: null, // Or get from your user system
-          items: order.items,
-          total: order.total,
-          customerEmail: order.customerEmail,
-          customerName: order.customerName,
-        });
-
-        // Save Wave invoice ID to your order
-        order.waveInvoiceId = invoice.id;
-        order.waveInvoiceNumber = invoice.invoiceNumber;
-        order.waveInvoicePdfUrl = invoice.pdfUrl;
-        await order.save();
-
-        console.log('Wave invoice created:', invoice.invoiceNumber);
-      } catch (error) {
-        console.error('Failed to create Wave invoice:', error);
-        // Don't fail the whole transaction if Wave fails
-      }
-    }
-  }
-
-  res.json({ received: true });
-});

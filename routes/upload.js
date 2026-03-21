@@ -1,4 +1,3 @@
-// backend/routes/upload.js
 const express = require("express");
 const multer = require("multer");
 const cloudinary = require("../cloudinaryConfig");
@@ -13,7 +12,6 @@ router.post(
   verifyAdmin,
   upload.single("image"),
   async (req, res) => {
-    // DEBUG LOGS — add these temporarily
     console.log("---- UPLOAD DEBUG ----");
     console.log("Headers:", req.headers["content-type"]);
     console.log("Body keys:", Object.keys(req.body));

@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const { optionalAuth } = require("../middleware/auth"); // optional auth
+const { optionalAuth } = require("../middleware/auth"); // ✅ Fixed path
 const logger = require("../logger");
 
 // POST /api/checkout - Create Stripe checkout session

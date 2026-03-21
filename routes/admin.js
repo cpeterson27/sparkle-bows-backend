@@ -1,45 +1,121 @@
-// routes/admin.js - PROFESSIONAL ANALYTICS ENDPOINT
+// routes/admin.js
 const express = require("express");
 const Order = require("../models/orderModel");
 const Product = require("../models/productModel");
 const User = require("../models/User");
+const Expense = require("../models/expenseModel");
 const { verifyToken, verifyAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
-// Protect all admin routes - CRITICAL SECURITY
+// Protect all admin routes
 router.use(verifyToken, verifyAdmin);
 
-// GET /api/analytics
-// GET /api/admin/analytics
+// ─── GET /api/admin/analytics ─────────────────────────────────────────────────
 router.get("/analytics", async (req, res) => {
   try {
     const { start, end } = req.query;
 
-    // Build date filter if provided
     let dateFilter = {};
     if (start || end) {
       dateFilter.createdAt = {};
       if (start) dateFilter.createdAt.$gte = new Date(start);
-      if (end) dateFilter.createdAt.$lte = new Date(end);
+      if (end)   dateFilter.createdAt.$lte = new Date(end);
     }
 
-    // Total orders
+    // ── Core metrics ──────────────────────────────────────────────────────────
     const totalOrders = await Order.countDocuments(dateFilter);
 
-    // Total revenue
     const revenueResult = await Order.aggregate([
       { $match: dateFilter },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]);
     const totalRevenue = revenueResult[0]?.total || 0;
 
-    // Unique customers
+    const taxResult = await Order.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: null, total: { $sum: "$tax" } } },
+    ]);
+    const totalTaxCollected = taxResult[0]?.total || 0;
+
+    const shippingResult = await Order.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: null, total: { $sum: "$shippingCost" } } },
+    ]);
+    const totalShippingCollected = shippingResult[0]?.total || 0;
+
+    const stripeFeesResult = await Order.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: null, total: { $sum: "$stripeFee" } } },
+    ]);
+    const totalStripeFees = stripeFeesResult[0]?.total || 0;
+
+    // Average Order Value
+    const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    // Unique customers by email
     const totalCustomers = await Order.distinct("customerEmail", dateFilter).then(
       (arr) => arr.length
     );
 
-    // Sales by product
+    const expenseDateFilter = {};
+    if (start || end) {
+      expenseDateFilter.date = {};
+      if (start) expenseDateFilter.date.$gte = new Date(start);
+      if (end) expenseDateFilter.date.$lte = new Date(end);
+    }
+
+    const expenses = await Expense.find(expenseDateFilter);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const expensesByType = expenses.reduce((acc, expense) => {
+      acc[expense.type] = (acc[expense.type] || 0) + expense.amount;
+      return acc;
+    }, {});
+
+    // ── Returning customers ───────────────────────────────────────────────────
+    const customerOrderCounts = await Order.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: "$customerEmail", orderCount: { $sum: 1 } } },
+    ]);
+    const returningCustomers = customerOrderCounts.filter((c) => c.orderCount > 1).length;
+    const returningCustomerRate =
+      customerOrderCounts.length > 0
+        ? ((returningCustomers / customerOrderCounts.length) * 100).toFixed(1)
+        : 0;
+
+    // ── Customer Lifetime Value (avg total spent per customer) ────────────────
+    const clvResult = await Order.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: "$customerEmail", totalSpent: { $sum: "$total" } } },
+      { $group: { _id: null, avgCLV: { $avg: "$totalSpent" } } },
+    ]);
+    const avgCLV = clvResult[0]?.avgCLV || 0;
+
+    // ── Top customers by spend ────────────────────────────────────────────────
+    const topCustomers = await Order.aggregate([
+      { $match: dateFilter },
+      {
+        $group: {
+          _id: "$customerEmail",
+          name: { $first: "$customerName" },
+          totalSpent: { $sum: "$total" },
+          orderCount: { $sum: 1 },
+        },
+      },
+      { $sort: { totalSpent: -1 } },
+      { $limit: 5 },
+      {
+        $project: {
+          email: "$_id",
+          name: 1,
+          totalSpent: 1,
+          orderCount: 1,
+          avgOrderValue: { $divide: ["$totalSpent", "$orderCount"] },
+        },
+      },
+    ]);
+
+    // ── Sales by product ──────────────────────────────────────────────────────
     const salesByProduct = await Order.aggregate([
       { $match: dateFilter },
       { $unwind: "$items" },
@@ -53,7 +129,7 @@ router.get("/analytics", async (req, res) => {
       { $sort: { totalRevenue: -1 } },
     ]);
 
-    // Product profit stats
+    // ── Product profit stats ──────────────────────────────────────────────────
     const productProfitStats = await Order.aggregate([
       { $match: dateFilter },
       { $unwind: "$items" },
@@ -79,25 +155,29 @@ router.get("/analytics", async (req, res) => {
           name: "$productDetails.name",
           totalUnitsSold: 1,
           totalRevenue: 1,
-          totalMaterialCost: { $multiply: ["$totalUnitsSold", "$productDetails.materialCost"] },
+          totalMaterialCost: {
+            $multiply: ["$totalUnitsSold", "$productDetails.materialCost"],
+          },
           profit: {
-            $subtract: ["$totalRevenue", { $multiply: ["$totalUnitsSold", "$productDetails.materialCost"] }],
+            $subtract: [
+              "$totalRevenue",
+              { $multiply: ["$totalUnitsSold", "$productDetails.materialCost"] },
+            ],
           },
         },
       },
       { $sort: { profit: -1 } },
     ]);
 
-    // Top 5 products by profit
     const topProducts = productProfitStats.slice(0, 5);
 
-    // Recent 5 orders
+    // ── Recent 20 orders (increased from 5 so Orders tab is useful) ───────────
     const recentOrders = await Order.find(dateFilter)
       .sort({ createdAt: -1 })
-      .limit(5)
+      .limit(20)
       .populate("items.productId");
 
-    // Sales by day (last 30 days) with profit
+    // ── Sales by day (last 30 days) ───────────────────────────────────────────
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -112,10 +192,8 @@ router.get("/analytics", async (req, res) => {
       if (!salesByDayObj[dateKey]) {
         salesByDayObj[dateKey] = { date: dateKey, revenue: 0, orders: 0, profit: 0 };
       }
-
       salesByDayObj[dateKey].revenue += order.total;
       salesByDayObj[dateKey].orders += 1;
-
       order.items.forEach((item) => {
         if (item.productId && item.productId.materialCost != null) {
           salesByDayObj[dateKey].profit +=
@@ -128,17 +206,93 @@ router.get("/analytics", async (req, res) => {
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
+    // ── Orders by day of week (helps with scheduling/inventory) ──────────────
+    const ordersByDayOfWeek = [
+      "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    ].map((day) => ({ day, orders: 0, revenue: 0 }));
+
+    recentOrders30Days.forEach((order) => {
+      const dow = new Date(order.createdAt).getDay();
+      ordersByDayOfWeek[dow].orders += 1;
+      ordersByDayOfWeek[dow].revenue += order.total;
+    });
+
+    // ── Monthly revenue vs profit (current year) ──────────────────────────────
+    const yearStart = new Date(new Date().getFullYear(), 0, 1);
+    const allYearOrders = await Order.find({
+      createdAt: { $gte: yearStart },
+    }).populate("items.productId");
+
+    const monthlyObj = {};
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    monthNames.forEach((m) => {
+      monthlyObj[m] = { month: m, revenue: 0, profit: 0, orders: 0 };
+    });
+
+    allYearOrders.forEach((order) => {
+      const m = monthNames[new Date(order.createdAt).getMonth()];
+      monthlyObj[m].revenue += order.total;
+      monthlyObj[m].orders += 1;
+      order.items.forEach((item) => {
+        if (item.productId?.materialCost != null) {
+          monthlyObj[m].profit += (item.price - item.productId.materialCost) * item.quantity;
+        }
+      });
+    });
+    const monthlyRevenue = Object.values(monthlyObj);
+
+    // ── Order status breakdown ────────────────────────────────────────────────
+    const orderStatusBreakdown = await Order.aggregate([
+      { $match: dateFilter },
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+      { $project: { status: "$_id", count: 1, _id: 0 } },
+    ]);
+
+    // ── Totals ────────────────────────────────────────────────────────────────
+    const totalMaterialCost = productProfitStats.reduce(
+      (sum, p) => sum + p.totalMaterialCost, 0
+    );
+    const totalProfit = productProfitStats.reduce((sum, p) => sum + p.profit, 0);
+    const estimatedOperatingProfit = totalProfit - totalExpenses;
+    const taxReserveRecommendation = estimatedOperatingProfit > 0
+      ? estimatedOperatingProfit * 0.25
+      : 0;
+    const profitMargin = totalRevenue > 0
+      ? ((totalProfit / totalRevenue) * 100).toFixed(1)
+      : 0;
+
     res.json({
+      // Core
       totalOrders,
       totalRevenue,
       totalCustomers,
+      totalTaxCollected,
+      totalShippingCollected,
+      totalStripeFees,
+      totalExpenses,
+      totalMaterialCost,
+      totalProfit,
+      estimatedOperatingProfit,
+      taxReserveRecommendation,
+      profitMargin,
+      expensesByType,
+
+      // Growth metrics
+      aov,
+      avgCLV,
+      returningCustomers,
+      returningCustomerRate,
+      topCustomers,
+
+      // Charts
       salesByProduct,
       productProfitStats,
       topProducts,
       recentOrders,
       salesByDay,
-      totalMaterialCost: productProfitStats.reduce((sum, p) => sum + p.totalMaterialCost, 0),
-      totalProfit: productProfitStats.reduce((sum, p) => sum + p.profit, 0),
+      monthlyRevenue,
+      ordersByDayOfWeek,
+      orderStatusBreakdown,
     });
   } catch (err) {
     console.error("Analytics error:", err);
@@ -146,8 +300,7 @@ router.get("/analytics", async (req, res) => {
   }
 });
 
-
-// GET /api/admin/stats - High level site stats
+// ─── GET /api/admin/stats ─────────────────────────────────────────────────────
 router.get("/stats", async (req, res) => {
   try {
     const userCount = await User.countDocuments();
@@ -157,7 +310,6 @@ router.get("/stats", async (req, res) => {
       { $unwind: "$items" },
       { $group: { _id: null, total: { $sum: "$items.quantity" } } },
     ]);
-
     res.json({
       userCount,
       productCount,
@@ -170,108 +322,92 @@ router.get("/stats", async (req, res) => {
   }
 });
 
-// Export sales data for tax reporting
-
+// ─── GET /api/admin/export/sales ──────────────────────────────────────────────
 router.get("/export/sales", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-
     const query = {};
     if (startDate || endDate) {
       query.createdAt = {};
       if (startDate) query.createdAt.$gte = new Date(startDate);
-      if (endDate) query.createdAt.$lte = new Date(endDate);
+      if (endDate)   query.createdAt.$lte = new Date(endDate);
     }
-
     const orders = await Order.find(query)
       .populate("items.productId")
       .populate("userId", "name email");
 
-    // Format for CSV export
     const csvData = orders.map((order) => ({
       OrderID: order._id,
       Date: order.createdAt.toISOString().split("T")[0],
-      Customer: order.userId?.name || "Guest",
-      Email: order.userId?.email || "",
+      Customer: order.customerName || order.userId?.name || "Guest",
+      Email: order.customerEmail || order.userId?.email || "",
       Items: order.items.length,
+      Subtotal: order.subtotal?.toFixed(2) || order.total.toFixed(2),
+      Shipping: order.shippingCost?.toFixed(2) || "0.00",
+      Tax: order.tax?.toFixed(2) || "0.00",
       Total: order.total.toFixed(2),
+      Profit: order.totalProfit?.toFixed(2) || "0.00",
       Status: order.status,
     }));
-
     res.json(csvData);
   } catch (err) {
     res.status(500).json({ error: "Export failed" });
   }
 });
 
-// Export product performance data
-
+// ─── GET /api/admin/export/products ──────────────────────────────────────────
 router.get("/export/products", async (req, res) => {
   try {
     const products = await Product.find();
-
     const csvData = products.map((p) => ({
       ProductID: p._id,
       Name: p.name,
+      Category: p.category,
       Price: p.price.toFixed(2),
       MaterialCost: p.materialCost.toFixed(2),
       Profit: (p.price - p.materialCost).toFixed(2),
+      Margin: p.price > 0
+        ? (((p.price - p.materialCost) / p.price) * 100).toFixed(1) + "%"
+        : "0%",
       Inventory: p.inventory,
       TotalSales: p.sales || 0,
       TotalRevenue: (p.price * (p.sales || 0)).toFixed(2),
       TotalProfit: ((p.price - p.materialCost) * (p.sales || 0)).toFixed(2),
     }));
-
     res.json(csvData);
   } catch (err) {
     res.status(500).json({ error: "Export failed" });
   }
 });
 
-//tax reporting - monthly breakdown
-
+// ─── GET /api/admin/reports/monthly ──────────────────────────────────────────
 router.get("/reports/monthly", async (req, res) => {
   try {
     const { year } = req.query;
     const targetYear = year ? parseInt(year) : new Date().getFullYear();
 
-    const startDate = new Date(`${targetYear}-01-01`);
-    const endDate = new Date(`${targetYear}-12-31`);
-
     const orders = await Order.find({
-      createdAt: { $gte: startDate, $lte: endDate },
+      createdAt: {
+        $gte: new Date(`${targetYear}-01-01`),
+        $lte: new Date(`${targetYear}-12-31`),
+      },
     }).populate("items.productId");
 
-    // Group by month
     const monthlyData = {};
-
     for (let month = 0; month < 12; month++) {
-      const monthName = new Date(targetYear, month).toLocaleString("default", {
-        month: "long",
-      });
-      monthlyData[monthName] = {
-        month: monthName,
-        revenue: 0,
-        profit: 0,
-        orders: 0,
-        itemsSold: 0,
-      };
+      const monthName = new Date(targetYear, month).toLocaleString("default", { month: "long" });
+      monthlyData[monthName] = { month: monthName, revenue: 0, profit: 0, orders: 0, itemsSold: 0 };
     }
 
     orders.forEach((order) => {
-      const month = new Date(order.createdAt).toLocaleString("default", {
-        month: "long",
-      });
-
+      const month = new Date(order.createdAt).toLocaleString("default", { month: "long" });
       monthlyData[month].revenue += order.total;
       monthlyData[month].orders += 1;
-
       order.items.forEach((item) => {
         monthlyData[month].itemsSold += item.quantity;
         if (item.productId) {
-          const profit =
+          monthlyData[month].profit +=
             (item.price - (item.productId.materialCost || 0)) * item.quantity;
-          monthlyData[month].profit += profit;
         }
       });
     });
