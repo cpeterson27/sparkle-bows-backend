@@ -1,6 +1,14 @@
 import React, { useContext, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, KeyRound, Lock, Mail, ShieldCheck, User, X } from "lucide-react";
+import {
+  ArrowRight,
+  KeyRound,
+  Lock,
+  Mail,
+  ShieldCheck,
+  User,
+  X,
+} from "lucide-react";
 import api from "../api/axios.config";
 import { AuthContext } from "../context/AuthContext";
 
@@ -22,8 +30,7 @@ export default function LoginModal({ onClose, onLogin }) {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const oauthBaseUrl =
-    process.env.REACT_APP_API_URL || window.location.origin;
+  const oauthBaseUrl = process.env.REACT_APP_API_URL || window.location.origin;
   const googleEnabled = process.env.REACT_APP_GOOGLE_OAUTH_ENABLED === "true";
   const appleEnabled = process.env.REACT_APP_APPLE_OAUTH_ENABLED === "true";
 
@@ -196,8 +203,8 @@ export default function LoginModal({ onClose, onLogin }) {
               </button>
               {!googleEnabled || !appleEnabled ? (
                 <p className="text-center text-xs text-slate-500">
-                  Provider sign-in buttons activate as soon as the matching OAuth
-                  keys are added to your environment.
+                  Provider sign-in buttons activate as soon as the matching
+                  OAuth keys are added to your environment.
                 </p>
               ) : null}
             </div>
@@ -210,71 +217,81 @@ export default function LoginModal({ onClose, onLogin }) {
               <div className="h-px flex-1 bg-slate-200" />
             </div>
 
-          <form onSubmit={handleCredentialsSubmit} className="mt-6 space-y-4">
-            {isSignup ? (
+            <form onSubmit={handleCredentialsSubmit} className="mt-6 space-y-4">
+              {isSignup ? (
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <User className="h-4 w-4 text-slate-400" />
+                    Name
+                  </span>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(event) =>
+                      setFormData((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                    required
+                  />
+                </label>
+              ) : null}
+
               <label className="block">
                 <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
-                  <User className="h-4 w-4 text-slate-400" />
-                  Name
+                  <Mail className="h-4 w-4 text-slate-400" />
+                  Email
                 </span>
                 <input
-                  type="text"
-                  value={formData.name}
+                  type="email"
+                  value={formData.email}
                   onChange={(event) =>
-                    setFormData((current) => ({ ...current, name: event.target.value }))
+                    setFormData((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
                   }
                   className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
                   required
                 />
               </label>
-            ) : null}
 
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Mail className="h-4 w-4 text-slate-400" />
-                Email
-              </span>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(event) =>
-                  setFormData((current) => ({ ...current, email: event.target.value }))
-                }
-                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                required
-              />
-            </label>
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <Lock className="h-4 w-4 text-slate-400" />
+                  Password
+                </span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={formData.password}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                  required
+                  minLength={6}
+                />
+              </label>
 
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Lock className="h-4 w-4 text-slate-400" />
-                Password
-              </span>
-              <input
-                type="password"
-                value={formData.password}
-                onChange={(event) =>
-                  setFormData((current) => ({ ...current, password: event.target.value }))
-                }
-                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                required
-                minLength={6}
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
-            >
-              {loading
-                ? "Working..."
-                : isSignup
-                  ? "Create account"
-                  : "Sign in"}
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
+              >
+                {loading
+                  ? "Working..."
+                  : isSignup
+                    ? "Create account"
+                    : "Sign in"}
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </form>
           </>
         )}
 
