@@ -421,12 +421,15 @@ router.get("/google/callback", async (req, res) => {
       await user.save();
     }
 
-    await createSessionResponse(user, res);
-    return res.redirect(
-      buildFrontendAuthRedirect({
-        provider: "google",
-      })
-    );
+    const accessToken = await createSessionResponse(user, res);
+    const successUrl = new URL("/", FRONTEND_URL);
+    successUrl.hash = new URLSearchParams({
+      oauth: "1",
+      provider: "google",
+      token: accessToken,
+    }).toString();
+
+    return res.redirect(successUrl.toString());
   } catch (error) {
     logger.error("Google OAuth callback error", { error: error.message });
     return res.redirect(
