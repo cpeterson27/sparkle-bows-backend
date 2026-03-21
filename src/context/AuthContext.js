@@ -46,7 +46,6 @@ export const AuthProvider = ({ children }) => {
       );
       applyAuthPayload(data);
     } catch (error) {
-      // 401 is expected when no session exists — not an error worth logging
       if (error.response?.status && error.response.status !== 401) {
         console.error("Session refresh failed:", error);
       }
@@ -56,11 +55,16 @@ export const AuthProvider = ({ children }) => {
     }
   }, [applyAuthPayload]);
 
-  // On mount: always try refresh — the cookie is now set cleanly by the
-  // backend before redirecting, so it will be present for OAuth logins too.
-  // No more hash/URL token parsing needed.
+  // On mount: skip tryRefresh if this is an OAuth redirect —
+  // completeOAuthLogin in App.jsx will handle auth via the URL token.
   useEffect(() => {
-    tryRefresh();
+    const params = new URLSearchParams(window.location.search);
+    const isOAuthRedirect = params.get("oauth") === "success";
+    if (isOAuthRedirect) {
+      setLoading(false);
+    } else {
+      tryRefresh();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loginUser = async ({ email, password }) => {
@@ -78,17 +82,15 @@ export const AuthProvider = ({ children }) => {
     return applyAuthPayload(data);
   };
 
-  // Called by App.jsx after OAuth redirect lands on /?oauth=success
-  // The refreshToken cookie is already set — just call tryRefresh.
-const completeOAuthLogin = useCallback(async (oauthToken = "") => {
-  if (oauthToken) {
-    const { data } = await api.get("/api/auth/me", {
-      headers: { Authorization: `Bearer ${oauthToken}` },
-    });
-    return applyAuthPayload({ ...data, accessToken: oauthToken });
-  }
-  await tryRefresh();
-}, [applyAuthPayload, tryRefresh]);
+  const completeOAuthLogin = useCallback(async (oauthToken = "") => {
+    if (oauthToken) {
+      const { data } = await api.get("/api/auth/me", {
+        headers: { Authorization: `Bearer ${oauthToken}` },
+      });
+      return applyAuthPayload({ ...data, accessToken: oauthToken });
+    }
+    await tryRefresh();
+  }, [applyAuthPayload, tryRefresh]);
 
   const logoutUser = async () => {
     try {
