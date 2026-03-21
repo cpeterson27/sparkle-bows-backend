@@ -32,7 +32,7 @@ import api from "./api/axios.config";
 import { AuthContext } from "./context/AuthContext";
 
 export default function App() {
-  const { user, loading: authLoading, refreshCurrentUser } = useContext(AuthContext);
+  const { user, loading: authLoading, completeOAuthLogin } = useContext(AuthContext);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -94,11 +94,16 @@ export default function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
+    const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
     const oauth = params.get("oauth");
     const error = params.get("error");
     const provider = params.get("provider");
+    const oauthToken = hashParams.get("token") || params.get("token") || "";
+    const oauthProvider = hashParams.get("provider") || provider;
+    const hasOauthSignal = oauth === "1" || hashParams.get("oauth") === "1";
+    const oauthError = error || hashParams.get("error");
 
-    if (!oauth && !error) {
+    if (!hasOauthSignal && !oauthError) {
       if (oauthMessage) setOauthMessage("");
       return;
     }
@@ -107,9 +112,9 @@ export default function App() {
     if (handledOauthRef.current === fingerprint) return;
     handledOauthRef.current = fingerprint;
 
-    if (error) {
+    if (oauthError) {
       setOauthMessage(
-        provider === "google"
+        oauthProvider === "google"
           ? "Google sign-in could not be completed."
           : "Sign-in could not be completed.",
       );
@@ -121,7 +126,7 @@ export default function App() {
 
     (async () => {
       try {
-        await refreshCurrentUser();
+        await completeOAuthLogin(oauthToken);
         setOauthMessage("");
         navigate("/", { replace: true });
       } catch (completionError) {
@@ -130,7 +135,7 @@ export default function App() {
         navigate("/", { replace: true });
       }
     })();
-  }, [location.pathname, location.search, navigate, oauthMessage, refreshCurrentUser]);
+  }, [completeOAuthLogin, location.hash, location.pathname, location.search, navigate, oauthMessage]);
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {

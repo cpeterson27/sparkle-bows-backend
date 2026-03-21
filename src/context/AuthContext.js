@@ -67,7 +67,30 @@ export const AuthProvider = ({ children }) => {
     return applyAuthPayload(data);
   };
 
-  const completeOAuthLogin = async () => refreshCurrentUser();
+  const completeOAuthLogin = async (oauthToken = "") => {
+    if (oauthToken) {
+      const { data } = await api.get("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${oauthToken}`,
+        },
+      });
+
+      const nextUser = applyAuthPayload({
+        ...data,
+        token: oauthToken,
+        accessToken: oauthToken,
+      });
+
+      // Give the refresh-token cookie a moment to settle after the redirect.
+      setTimeout(() => {
+        tryRefresh();
+      }, 300);
+
+      return nextUser;
+    }
+
+    return refreshCurrentUser();
+  };
 
   const logoutUser = async () => {
     try {
