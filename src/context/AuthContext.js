@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback } from "react";
-import api, { injectAccessTokenGetter } from "../api/axios.config";
+import api, { injectAccessTokenGetter, injectAccessTokenSetter } from "../api/axios.config";
 import { fetchCurrentUser, updateCurrentUserProfile } from "../api/account";
 import { verifyTwoFactorLogin as verifyTwoFactorLoginRequest } from "../api/security";
 
@@ -10,9 +10,17 @@ export const AuthProvider = ({ children }) => {
   const [accessToken, setAccessToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Inject both getter and setter so the axios interceptor can
+  // read and update the token automatically on 401s
   useEffect(() => {
     injectAccessTokenGetter(() => accessToken);
   }, [accessToken]);
+
+  useEffect(() => {
+    injectAccessTokenSetter((newToken) => {
+      setAccessToken(newToken);
+    });
+  }, []);
 
   const setAuth = (userData, token) => {
     setUser(userData);
@@ -55,8 +63,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, [applyAuthPayload]);
 
-  // On mount: skip tryRefresh if this is an OAuth redirect —
-  // completeOAuthLogin in App.jsx will handle auth via the URL token.
+  // On mount: skip tryRefresh if this is an OAuth redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const isOAuthRedirect = params.get("oauth") === "success";
