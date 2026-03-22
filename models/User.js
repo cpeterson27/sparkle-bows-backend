@@ -45,15 +45,10 @@ const userSchema = new mongoose.Schema(
     },
     authProvider: {
       type: String,
-      enum: ["local", "google", "apple"],
+      enum: ["local", "google"],
       default: "local",
     },
     googleId: {
-      type: String,
-      default: "",
-      index: true,
-    },
-    appleId: {
       type: String,
       default: "",
       index: true,

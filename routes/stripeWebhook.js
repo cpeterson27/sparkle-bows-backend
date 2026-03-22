@@ -7,12 +7,10 @@ const Order = require("../models/orderModel");
 const Cart = require("../models/cartModel");
 const Product = require("../models/productModel");
 const { sendOrderConfirmationEmail, sendOwnerNotification } = require("../services/emailService");
-const waveService = require("../services/waveService");
 
-// -------------------------
-// STRIPE WEBHOOK ENDPOINT
-// ✅ This handles payment success and updates tax/totals from Stripe
-// -------------------------
+// Wave recording is handled by Zapier (Stripe → Wave Record Sale)
+// waveService disabled to prevent duplicate entries
+
 router.post("/", express.raw({ type: "application/json" }), async (req, res) => {
   const sig = req.headers["stripe-signature"];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -57,7 +55,7 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
           return res.status(404).json({ error: "Order not found" });
         }
 
-        // ✅ PREVENT DUPLICATE PROCESSING (idempotency)
+        // Prevent duplicate processing
         if (order.status !== "pending") {
           logger.warn("Webhook already processed (order not pending)", {
             orderId: order._id,
@@ -67,10 +65,10 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
         }
 
         // -------------------------
-        // 4. GET TAX AND FINAL TOTAL FROM STRIPE (SOURCE OF TRUTH)
+        // 4. GET TAX AND FINAL TOTAL FROM STRIPE
         // -------------------------
         const charge = paymentIntent.charges?.data[0];
-        
+
         if (!charge) {
           logger.error("No charge found in payment intent", {
             paymentIntentId: paymentIntent.id,
@@ -78,12 +76,10 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
           return res.status(400).json({ error: "No charge found" });
         }
 
-        // ✅ EXTRACT REAL TAX AMOUNT FROM STRIPE
         const taxAmount = charge.amount_captured - paymentIntent.amount;
-        const tax = Math.max(0, taxAmount / 100); // Convert cents to dollars
+        const tax = Math.max(0, taxAmount / 100);
         const total = charge.amount_captured / 100;
 
-        // Calculate Stripe fee (will be in balance transaction)
         let stripeFee = 0;
         if (charge.balance_transaction) {
           try {
@@ -96,16 +92,14 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
               error: err.message,
               chargeId: charge.id,
             });
-            // Estimate fee if retrieval fails
             stripeFee = parseFloat((total * 0.029 + 0.3).toFixed(2));
           }
         } else {
-          // Estimate fee
           stripeFee = parseFloat((total * 0.029 + 0.3).toFixed(2));
         }
 
         // -------------------------
-        // 5. UPDATE ORDER WITH REAL VALUES FROM STRIPE
+        // 5. UPDATE ORDER
         // -------------------------
         order.tax = parseFloat(tax.toFixed(2));
         order.total = parseFloat(total.toFixed(2));
@@ -187,35 +181,8 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
         await order.save();
 
         // -------------------------
-        // 9. CREATE WAVE INVOICE (ACCOUNTING)
+        // Wave recording handled by Zapier — no backend call needed
         // -------------------------
-        try {
-          const waveInvoice = await waveService.createInvoice({
-            customerEmail: order.customerEmail,
-            customerName: order.customerName,
-            items: order.items,
-            total: order.total,
-          });
-
-          if (waveInvoice && waveInvoice.id) {
-            order.waveInvoiceId = waveInvoice.id;
-            order.waveInvoiceNumber = waveInvoice.invoiceNumber;
-            order.waveInvoicePdfUrl = waveInvoice.pdfUrl;
-            await order.save();
-
-            logger.info("✅ Wave invoice created", {
-              orderId: order._id,
-              waveInvoiceId: waveInvoice.id,
-              waveInvoiceNumber: waveInvoice.invoiceNumber,
-            });
-          }
-        } catch (waveErr) {
-          logger.error("Failed to create Wave invoice", {
-            orderId: order._id,
-            error: waveErr.message,
-          });
-          // Don't fail order processing if Wave fails
-        }
 
         logger.info("🎉 Order processed successfully", {
           orderId: order._id,
@@ -230,7 +197,6 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
           stack: err.stack,
           paymentIntentId: paymentIntent.id,
         });
-        // Still return 200 to Stripe so it doesn't retry
       }
       break;
     }
@@ -243,7 +209,6 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
         error: paymentIntent.last_payment_error?.message,
       });
 
-      // Mark order as cancelled
       try {
         await Order.findOneAndUpdate(
           { stripePaymentIntentId: paymentIntent.id },
@@ -262,9 +227,6 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
       logger.info(`Unhandled webhook event type: ${event.type}`);
   }
 
-  // -------------------------
-  // 10. RESPOND TO STRIPE
-  // -------------------------
   res.json({ received: true });
 });
 
