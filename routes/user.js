@@ -5,11 +5,13 @@ const logger = require("../logger");
 
 const router = express.Router();
 
+// ------------------------
+// ADDRESSES
+// ------------------------
 router.get("/addresses", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-
     res.json({ addresses: user.addresses || [] });
   } catch (err) {
     logger.error("Failed to fetch addresses", { error: err.message });
@@ -29,7 +31,7 @@ router.post("/addresses", verifyToken, async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
 
     if (isDefault) {
-      user.addresses.forEach(addr => addr.isDefault = false);
+      user.addresses.forEach((addr) => (addr.isDefault = false));
     }
 
     const makeDefault = user.addresses.length === 0 || isDefault;
@@ -46,13 +48,8 @@ router.post("/addresses", verifyToken, async (req, res) => {
     });
 
     await user.save();
-
     logger.info("Address added", { userId: user._id });
-
-    res.json({
-      message: "Address added successfully",
-      addresses: user.addresses,
-    });
+    res.json({ message: "Address added successfully", addresses: user.addresses });
   } catch (err) {
     logger.error("Failed to add address", { error: err.message });
     res.status(500).json({ error: "Could not add address" });
@@ -71,7 +68,7 @@ router.put("/addresses/:addressId", verifyToken, async (req, res) => {
     if (!address) return res.status(404).json({ error: "Address not found" });
 
     if (isDefault) {
-      user.addresses.forEach(addr => addr.isDefault = false);
+      user.addresses.forEach((addr) => (addr.isDefault = false));
     }
 
     if (label) address.label = label;
@@ -84,11 +81,7 @@ router.put("/addresses/:addressId", verifyToken, async (req, res) => {
     if (isDefault !== undefined) address.isDefault = isDefault;
 
     await user.save();
-
-    res.json({
-      message: "Address updated successfully",
-      addresses: user.addresses,
-    });
+    res.json({ message: "Address updated successfully", addresses: user.addresses });
   } catch (err) {
     logger.error("Failed to update address", { error: err.message });
     res.status(500).json({ error: "Could not update address" });
@@ -113,11 +106,7 @@ router.delete("/addresses/:addressId", verifyToken, async (req, res) => {
     }
 
     await user.save();
-
-    res.json({
-      message: "Address deleted successfully",
-      addresses: user.addresses,
-    });
+    res.json({ message: "Address deleted successfully", addresses: user.addresses });
   } catch (err) {
     logger.error("Failed to delete address", { error: err.message });
     res.status(500).json({ error: "Could not delete address" });
@@ -134,18 +123,65 @@ router.patch("/addresses/:addressId/default", verifyToken, async (req, res) => {
     const address = user.addresses.id(addressId);
     if (!address) return res.status(404).json({ error: "Address not found" });
 
-    user.addresses.forEach(addr => addr.isDefault = false);
+    user.addresses.forEach((addr) => (addr.isDefault = false));
     address.isDefault = true;
 
     await user.save();
-
-    res.json({
-      message: "Default address updated",
-      addresses: user.addresses,
-    });
+    res.json({ message: "Default address updated", addresses: user.addresses });
   } catch (err) {
     logger.error("Failed to set default address", { error: err.message });
     res.status(500).json({ error: "Could not set default address" });
+  }
+});
+
+// ------------------------
+// NOTIFICATION PREFERENCES
+// ------------------------
+router.get("/notification-preferences", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    res.json({
+      notificationPreferences: user.notificationPreferences || {
+        orderUpdates: true,
+        marketing: false,
+      },
+    });
+  } catch (err) {
+    logger.error("Failed to fetch notification preferences", { error: err.message });
+    res.status(500).json({ error: "Could not fetch preferences" });
+  }
+});
+
+router.patch("/notification-preferences", verifyToken, async (req, res) => {
+  try {
+    const { orderUpdates, marketing } = req.body;
+
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (!user.notificationPreferences) {
+      user.notificationPreferences = { orderUpdates: true, marketing: false };
+    }
+
+    if (typeof orderUpdates === "boolean") {
+      user.notificationPreferences.orderUpdates = orderUpdates;
+    }
+    if (typeof marketing === "boolean") {
+      user.notificationPreferences.marketing = marketing;
+    }
+
+    await user.save();
+
+    logger.info("Notification preferences updated", { userId: user._id });
+    res.json({
+      message: "Preferences saved",
+      notificationPreferences: user.notificationPreferences,
+    });
+  } catch (err) {
+    logger.error("Failed to save notification preferences", { error: err.message });
+    res.status(500).json({ error: "Could not save preferences" });
   }
 });
 

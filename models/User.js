@@ -15,6 +15,14 @@ const addressSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const notificationPreferencesSchema = new mongoose.Schema(
+  {
+    orderUpdates: { type: Boolean, default: true },
+    marketing: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -77,6 +85,10 @@ const userSchema = new mongoose.Schema(
     addresses: {
       type: [addressSchema],
       default: [],
+    },
+    notificationPreferences: {
+      type: notificationPreferencesSchema,
+      default: () => ({ orderUpdates: true, marketing: false }),
     },
     role: {
       type: String,
