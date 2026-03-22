@@ -87,7 +87,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       amount: Math.round((subtotal + shippingCost) * 100),
       currency: "usd",
       automatic_payment_methods: { enabled: true },
-      automatic_tax: { enabled: true },
+      // automatic_tax disabled — requires Stripe Tax setup
       shipping: {
         name: customerName,
         address: {
