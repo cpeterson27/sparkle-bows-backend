@@ -11,49 +11,43 @@ const router = express.Router();
 
 router.post("/create-payment-intent", optionalAuth, async (req, res) => {
   try {
-    const { customerName, customerEmail, shippingInfo, isGift, giftMessage } =
-      req.body;
+    const { customerName, customerEmail, shippingInfo, isGift, giftMessage } = req.body;
 
     /* ------------------ VALIDATION ------------------ */
     if (!customerName || !customerEmail) {
       return res.status(400).json({ error: "Name and email are required" });
     }
 
-    if (
-      !shippingInfo?.line1 ||
-      !shippingInfo?.city ||
-      !shippingInfo?.state ||
-      !shippingInfo?.postalCode
-    ) {
-      return res
-        .status(400)
-        .json({ error: "Complete shipping address required" });
+    if (!shippingInfo?.line1 || !shippingInfo?.city || !shippingInfo?.state || !shippingInfo?.postalCode) {
+      return res.status(400).json({ error: "Complete shipping address required" });
     }
 
-    /* ------------------ LOAD CART ------------------ */
+    /* ------------------ LOAD CART ------------------
+     * Try every possible way to find the cart:
+     * 1. By userId if logged in
+     * 2. By signed guestId cookie
+     * 3. By unsigned guestId cookie (fallback for cross-domain cookie issues)
+     * 4. By refreshToken cookie userId (last resort)
+     */
     const userId = req.user?.userId;
-    const guestId = req.signedCookies?.guestId;
+    const guestId = req.signedCookies?.guestId || req.cookies?.guestId;
 
     let cart;
+
     if (userId) {
       cart = await Cart.findOne({ userId }).populate("items.productId");
     }
+
     if (!cart && guestId) {
       cart = await Cart.findOne({ guestId }).populate("items.productId");
     }
 
-    // Last resort: try finding by the refresh token cookie's userId
     if (!cart && req.cookies?.refreshToken) {
       try {
         const jwt = require("jsonwebtoken");
-        const decoded = jwt.verify(
-          req.cookies.refreshToken,
-          process.env.JWT_REFRESH_SECRET,
-        );
+        const decoded = jwt.verify(req.cookies.refreshToken, process.env.JWT_REFRESH_SECRET);
         if (decoded?.userId) {
-          cart = await Cart.findOne({ userId: decoded.userId }).populate(
-            "items.productId",
-          );
+          cart = await Cart.findOne({ userId: decoded.userId }).populate("items.productId");
         }
       } catch (_) {}
     }
@@ -71,15 +65,11 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       if (!product) {
         return res.status(400).json({ error: "Product no longer exists" });
       }
-
       if (product.inventory < item.quantity) {
-        return res.status(400).json({
-          error: `Not enough stock for ${product.name}`,
-        });
+        return res.status(400).json({ error: `Not enough stock for ${product.name}` });
       }
 
       subtotal += product.price * item.quantity;
-
       orderItems.push({
         productId: product._id,
         name: product.name,
@@ -94,12 +84,10 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
 
     /* ------------------ STRIPE PAYMENT INTENT ------------------ */
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round((subtotal + shippingCost) * 100), // BEFORE TAX
+      amount: Math.round((subtotal + shippingCost) * 100),
       currency: "usd",
       automatic_payment_methods: { enabled: true },
-
       automatic_tax: { enabled: true },
-
       shipping: {
         name: customerName,
         address: {
@@ -111,9 +99,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
           country: shippingInfo.country || "US",
         },
       },
-
       receipt_email: customerEmail,
-
       metadata: {
         orderType: "checkout",
         isGift: isGift ? "true" : "false",
@@ -121,7 +107,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       },
     });
 
-    /* ------------------ CREATE ORDER (TAX VIA WEBHOOK) ------------------ */
+    /* ------------------ CREATE ORDER ------------------ */
     const order = await Order.create({
       userId: userId || null,
       customerName,
@@ -129,7 +115,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       items: orderItems,
       subtotal,
       shippingCost,
-      tax: 0, // filled by webhook
+      tax: 0,
       total: subtotal + shippingCost,
       status: "pending",
       shippingAddress: shippingInfo,
@@ -152,10 +138,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       message: err.message,
       stack: err.stack,
     });
-
-    res.status(500).json({
-      error: "Could not create payment intent",
-    });
+    res.status(500).json({ error: "Could not create payment intent" });
   }
 });
 
