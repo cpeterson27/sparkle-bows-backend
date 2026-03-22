@@ -9,8 +9,8 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false, // Use TLS
   auth: {
-    user: process.env.EMAIL_USER, // sparklebowshop@gmail.com
-    pass: process.env.EMAIL_APP_PASSWORD, // 16-char app password
+    user: process.env.GMAIL_USER, // sparklebowshop@gmail.com
+    pass: process.env.GMAIL_PASS, // 16-char app password
   },
 });
 
@@ -250,7 +250,7 @@ function getOrderConfirmationHTML(order) {
                     Questions? Reply to this email!
                   </p>
                   <p style="margin: 0 0 16px 0; color: #ec4899; font-weight: bold;">
-                    ${process.env.EMAIL_USER}
+                    ${process.env.GMAIL_USER}
                   </p>
                   <p style="margin: 0; color: #9ca3af; font-size: 12px;">
                     © ${new Date().getFullYear()} Sparkle & Twirl Bows. Made with 💖 by a 7-year-old ballerina!
@@ -460,7 +460,7 @@ function getTrackingEmailHTML(order) {
                     Questions about your order?
                   </p>
                   <p style="margin: 0; color: #ec4899; font-weight: bold;">
-                    Reply to this email: ${process.env.EMAIL_USER}
+                    Reply to this email: ${process.env.GMAIL_USER}
                   </p>
                 </td>
               </tr>
@@ -480,7 +480,7 @@ function getTrackingEmailHTML(order) {
 async function sendOrderConfirmationEmail(order) {
   try {
     const mailOptions = {
-      from: `"Sparkle & Twirl Bows 🎀" <${process.env.EMAIL_USER}>`,
+      from: `"Sparkle & Twirl Bows 🎀" <${process.env.GMAIL_USER}>`,
       to: order.customerEmail,
       subject: `Order Confirmed! 🎀 #${order._id.toString().slice(-8).toUpperCase()}`,
       html: getOrderConfirmationHTML(order),
@@ -508,8 +508,8 @@ async function sendOrderConfirmationEmail(order) {
 async function sendOwnerNotification(order) {
   try {
     const mailOptions = {
-      from: `"Bow Shop Notification" <${process.env.EMAIL_USER}>`,
-      to: process.env.OWNER_EMAIL || process.env.EMAIL_USER,
+      from: `"Bow Shop Notification" <${process.env.GMAIL_USER}>`,
+      to: process.env.OWNER_EMAIL || process.env.GMAIL_USER,
       subject: `🎉 NEW ORDER #${order._id.toString().slice(-8).toUpperCase()} - $${order.total.toFixed(2)}`,
       html: getOwnerNotificationHTML(order),
     };
@@ -536,7 +536,7 @@ async function sendOwnerNotification(order) {
 async function sendTrackingEmail(order) {
   try {
     const mailOptions = {
-      from: `"Sparkle & Twirl Bows 🎀" <${process.env.EMAIL_USER}>`,
+      from: `"Sparkle & Twirl Bows 🎀" <${process.env.GMAIL_USER}>`,
       to: order.customerEmail,
       subject: `Your Order Has Shipped! 🚚 #${order._id.toString().slice(-8).toUpperCase()}`,
       html: getTrackingEmailHTML(order),
