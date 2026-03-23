@@ -23,10 +23,9 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
     }
 
     /* ------------------ LOAD CART ------------------
-     * Try every possible way to find the cart:
      * 1. By userId if logged in
      * 2. By signed guestId cookie
-     * 3. By unsigned guestId cookie (fallback for cross-domain cookie issues)
+     * 3. By unsigned guestId cookie (cross-domain cookie fallback)
      * 4. By refreshToken cookie userId (last resort)
      */
     const userId = req.user?.userId;
@@ -87,7 +86,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       amount: Math.round((subtotal + shippingCost) * 100),
       currency: "usd",
       automatic_payment_methods: { enabled: true },
-      
+      automatic_tax: { enabled: true },
       shipping: {
         name: customerName,
         address: {
@@ -115,7 +114,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       items: orderItems,
       subtotal,
       shippingCost,
-      tax: 0,
+      tax: 0, // final tax set by webhook after Stripe calculates it
       total: subtotal + shippingCost,
       status: "pending",
       shippingAddress: shippingInfo,
