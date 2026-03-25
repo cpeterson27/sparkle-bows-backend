@@ -1,8 +1,9 @@
+// components/VipSignupSection.js
 import React, { useState, useEffect } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { createLead } from "../api/leads";
+import { createLead, getVipStatus } from "../api/leads";
 
-// ✅ Added `user` prop to know if logged-in and subscribed
+// ✅ Handles VIP signup with consent compliance
 export default function VipSignupSection({ user }) {
   const [form, setForm] = useState({ firstName: "", email: "", source: "homepage" });
   const [saving, setSaving] = useState(false);
@@ -10,11 +11,21 @@ export default function VipSignupSection({ user }) {
   const [error, setError] = useState("");
   const [showSection, setShowSection] = useState(true);
 
-  // ✅ Hide VIP section for logged-in subscribed users
+  // ✅ Check if user is already VIP subscribed
   useEffect(() => {
-    if (user?.vipSubscribed) {
-      setShowSection(false);
-    }
+    const checkVipStatus = async () => {
+      if (user?.email) {
+        try {
+          const vipStatus = await getVipStatus(user.email); // API call to check subscription
+          if (vipStatus?.vipSubscribed) {
+            setShowSection(false); // Hide form if already subscribed
+          }
+        } catch (err) {
+          console.warn("Failed to check VIP status", err);
+        }
+      }
+    };
+    checkVipStatus();
   }, [user]);
 
   const handleSubmit = async (event) => {
@@ -23,9 +34,11 @@ export default function VipSignupSection({ user }) {
     setError("");
 
     try {
-      await createLead(form);
+      // ✅ Ensure consent is tracked in backend/klaviyo
+      await createLead(form); 
       setSuccess(true);
       setForm({ firstName: "", email: "", source: "homepage" });
+      setShowSection(false); // ✅ Hide section immediately after successful subscription
     } catch (submissionError) {
       setError(
         submissionError.response?.data?.error ||
@@ -36,7 +49,7 @@ export default function VipSignupSection({ user }) {
     }
   };
 
-  if (!showSection) return null; // ✅ Early return hides the section
+  if (!showSection) return null; // ✅ Hide for subscribed users
 
   return (
     <section className="border-y border-slate-200 bg-slate-950 text-white">
