@@ -2,63 +2,62 @@
 const express = require("express");
 const fetch = require("node-fetch");
 const Lead = require("../models/Lead");
-const { sendOwnerNotification } = require("../services/emailService");
+const { sendVipSignupNotification } = require("../services/emailService");
 const logger = require("../logger");
 
 const router = express.Router();
 
-// ─── Klaviyo API constants ───────────────────────────────
 const KLAVIYO_API_PROFILES = "https://a.klaviyo.com/api/profiles";
 const KLAVIYO_PRIVATE_KEY = process.env.KLAVIYO_PRIVATE_KEY;
 
-// ─── Helper: create a Klaviyo profile ─────────────────────
-async function createKlaviyoProfile(email, source = "website") {
+// ─── Helper: create or update a Klaviyo profile ───────────
+async function createKlaviyoProfile(email, firstName = "", source = "website") {
   if (!KLAVIYO_PRIVATE_KEY) {
-    logger.warn("Klaviyo private key missing");
+    logger.warn("Klaviyo private key missing — skipping Klaviyo sync");
     return false;
   }
 
   try {
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
     const payload = {
-      data: [
-        {
-          type: "profile",
-          attributes: {
-            email,
-            metadata: { source },
-          },
+      data: {
+        type: "profile",
+        attributes: {
+          email,
+          ...(firstName && { first_name: firstName }),
+          properties: { source },
         },
-      ],
+      },
     };
 
     const res = await fetch(KLAVIYO_API_PROFILES, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/vnd.api+json",
+        Accept: "application/vnd.api+json",
         Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}`,
-        REVISION: today,
+        revision: "2023-12-15",
       },
       body: JSON.stringify(payload),
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      logger.error("❌ KLAVIYO ERROR RESPONSE (profile):", { response: text });
-      return false;
+    // 201 = created, 409 = profile already exists — both are success
+    if (res.status === 201 || res.status === 409) {
+      return true;
     }
 
-    return true;
+    const text = await res.text();
+    logger.error("Klaviyo error response", { status: res.status, body: text });
+    return false;
   } catch (err) {
-    logger.error("❌ KLAVIYO fetch error (profile):", { error: err.message });
+    logger.error("Klaviyo fetch error", { error: err.message });
     return false;
   }
 }
 
-// ─── POST /api/leads ─────────────────────────────────────
+// ─── POST /api/leads ──────────────────────────────────────
 router.post("/", async (req, res) => {
   try {
-    const { email, source = "website" } = req.body;
+    const { email, firstName = "", source = "website" } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
@@ -71,43 +70,45 @@ router.post("/", async (req, res) => {
     if (!lead) {
       lead = await Lead.create({
         email: normalizedEmail,
+        firstName,
         source,
         vipSubscribed: false,
       });
     }
 
     if (!lead.vipSubscribed) {
-      const profileCreated = await createKlaviyoProfile(lead.email, source);
+      const profileCreated = await createKlaviyoProfile(
+        lead.email,
+        firstName || lead.firstName,
+        source
+      );
       if (profileCreated) {
         lead.vipSubscribed = true;
         await lead.save();
       }
     }
 
-    // ─── Notify owner ─────────────────────────────
+    // Notify owner — uses its own lightweight template, not the order template
     try {
-      await sendOwnerNotification({
-        subject: "New VIP signup",
-        customerName: "VIP Customer",
-        customerEmail: lead.email,
+      await sendVipSignupNotification({
+        email: lead.email,
+        firstName: firstName || lead.firstName || "Unknown",
+        source,
       });
     } catch (err) {
-      logger.error("Owner email failed", { error: err.message });
+      logger.error("VIP owner notification failed", { error: err.message });
     }
 
     logger.info("VIP lead captured", { email: lead.email });
 
-    return res.status(201).json({
-      message: "Lead captured",
-      lead,
-    });
+    return res.status(201).json({ message: "Lead captured", lead });
   } catch (error) {
     logger.error("Lead route error", { error: error.message });
     return res.status(500).json({ error: "Server error" });
   }
 });
 
-// ─── GET /api/leads/status ─────────────────────────────
+// ─── GET /api/leads/status ────────────────────────────────
 router.get("/status", async (req, res) => {
   try {
     const { email } = req.query;
@@ -116,13 +117,9 @@ router.get("/status", async (req, res) => {
       return res.json({ vipSubscribed: false });
     }
 
-    const lead = await Lead.findOne({
-      email: email.toLowerCase().trim(),
-    });
+    const lead = await Lead.findOne({ email: email.toLowerCase().trim() });
 
-    return res.json({
-      vipSubscribed: !!lead?.vipSubscribed,
-    });
+    return res.json({ vipSubscribed: !!lead?.vipSubscribed });
   } catch (err) {
     logger.error("VIP status error", { error: err.message });
     return res.json({ vipSubscribed: false });

@@ -7,10 +7,10 @@ const logger = require("../logger");
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
-  secure: false, // Use TLS
+  secure: false,
   auth: {
-    user: process.env.GMAIL_USER, // sparklebowshop@gmail.com
-    pass: process.env.GMAIL_PASS, // 16-char app password
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
   },
 });
 
@@ -67,10 +67,8 @@ function getOrderConfirmationHTML(order) {
       <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fdf2f8; padding: 40px 20px;">
         <tr>
           <td align="center">
-            <!-- Main Container -->
             <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
               
-              <!-- Header -->
               <tr>
                 <td style="background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%); padding: 40px 30px; text-align: center;">
                   <h1 style="margin: 0; color: white; font-size: 32px; font-weight: bold;">
@@ -82,7 +80,6 @@ function getOrderConfirmationHTML(order) {
                 </td>
               </tr>
 
-              <!-- Thank You Message -->
               <tr>
                 <td style="padding: 40px 30px 20px 30px; text-align: center;">
                   <div style="display: inline-block; background-color: #dcfce7; color: #166534; padding: 12px 24px; border-radius: 24px; font-weight: bold; margin-bottom: 20px;">
@@ -97,7 +94,6 @@ function getOrderConfirmationHTML(order) {
                 </td>
               </tr>
 
-              <!-- Order Number -->
               <tr>
                 <td style="padding: 0 30px 30px 30px;">
                   <div style="background: linear-gradient(135deg, #fce7f3 0%, #e9d5ff 100%); border: 2px solid #ec4899; border-radius: 12px; padding: 20px; text-align: center;">
@@ -115,7 +111,6 @@ function getOrderConfirmationHTML(order) {
               ${
                 order.isGift
                   ? `
-              <!-- Gift Message -->
               <tr>
                 <td style="padding: 0 30px 30px 30px;">
                   <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px;">
@@ -134,7 +129,6 @@ function getOrderConfirmationHTML(order) {
                   : ""
               }
 
-              <!-- Order Items -->
               <tr>
                 <td style="padding: 0 30px 30px 30px;">
                   <h3 style="margin: 0 0 16px 0; color: #1f2937; font-size: 20px;">Order Details</h3>
@@ -153,7 +147,6 @@ function getOrderConfirmationHTML(order) {
                 </td>
               </tr>
 
-              <!-- Order Totals -->
               <tr>
                 <td style="padding: 0 30px 30px 30px;">
                   <table width="100%" cellpadding="0" cellspacing="0">
@@ -187,7 +180,6 @@ function getOrderConfirmationHTML(order) {
                 </td>
               </tr>
 
-              <!-- Shipping Address -->
               <tr>
                 <td style="padding: 0 30px 30px 30px;">
                   <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px;">
@@ -205,7 +197,6 @@ function getOrderConfirmationHTML(order) {
                 </td>
               </tr>
 
-              <!-- What's Next -->
               <tr>
                 <td style="padding: 0 30px 30px 30px;">
                   <h3 style="margin: 0 0 16px 0; color: #1f2937; font-size: 18px; text-align: center;">
@@ -233,7 +224,6 @@ function getOrderConfirmationHTML(order) {
                 </td>
               </tr>
 
-              <!-- CTA Button -->
               <tr>
                 <td style="padding: 0 30px 40px 30px; text-align: center;">
                   <a href="${process.env.FRONTEND_URL}/orders/${order._id}" 
@@ -243,7 +233,6 @@ function getOrderConfirmationHTML(order) {
                 </td>
               </tr>
 
-              <!-- Footer -->
               <tr>
                 <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
                   <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">
@@ -268,7 +257,7 @@ function getOrderConfirmationHTML(order) {
 }
 
 // -------------------------
-// EMAIL TEMPLATE: Owner Notification
+// EMAIL TEMPLATE: Owner Notification (Orders)
 // -------------------------
 function getOwnerNotificationHTML(order) {
   const itemsList = order.items
@@ -377,6 +366,70 @@ function getOwnerNotificationHTML(order) {
 }
 
 // -------------------------
+// EMAIL TEMPLATE: VIP Signup Notification (Owner)
+// -------------------------
+function getVipSignupNotificationHTML({ email, firstName, source }) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>New VIP Signup</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 20px;">
+        <tr>
+          <td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 8px; overflow: hidden;">
+
+              <tr>
+                <td style="background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%); padding: 20px; text-align: center;">
+                  <h1 style="margin: 0; color: white; font-size: 24px;">⭐ NEW VIP SUBSCRIBER!</h1>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding: 30px;">
+                  <div style="background-color: #fdf4ff; border-left: 4px solid #ec4899; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                    <p style="margin: 0 0 8px 0; color: #6b21a8; font-weight: bold; font-size: 16px;">
+                      Someone just joined the VIP list! 🎀
+                    </p>
+                    <p style="margin: 0 0 6px 0; color: #6b21a8;">
+                      <strong>Email:</strong> ${email}
+                    </p>
+                    ${firstName ? `<p style="margin: 0 0 6px 0; color: #6b21a8;"><strong>First Name:</strong> ${firstName}</p>` : ""}
+                    <p style="margin: 0; color: #6b21a8;">
+                      <strong>Source:</strong> ${source}
+                    </p>
+                  </div>
+
+                  <div style="text-align: center; margin-top: 24px;">
+                    <a href="${process.env.FRONTEND_URL}/admin"
+                       style="display: inline-block; background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%); color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
+                      View in Admin Panel
+                    </a>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="background-color: #f9fafb; padding: 16px; text-align: center; border-top: 1px solid #e5e7eb;">
+                  <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                    © ${new Date().getFullYear()} Sparkle & Twirl Bows
+                  </p>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+}
+
+// -------------------------
 // EMAIL TEMPLATE: Tracking Number (Customer)
 // -------------------------
 function getTrackingEmailHTML(order) {
@@ -422,7 +475,6 @@ function getTrackingEmailHTML(order) {
                     <p style="margin: 0 0 20px 0; color: #1f2937; font-size: 20px; font-weight: bold; font-family: monospace;">
                       #${order._id.toString().slice(-8).toUpperCase()}
                     </p>
-                    
                     <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Tracking Number</p>
                     <p style="margin: 0; color: #3b82f6; font-size: 24px; font-weight: bold; font-family: monospace;">
                       ${order.trackingNumber}
@@ -503,7 +555,7 @@ async function sendOrderConfirmationEmail(order) {
 }
 
 // -------------------------
-// SEND: Owner Notification
+// SEND: Owner Notification (Orders)
 // -------------------------
 async function sendOwnerNotification(order) {
   try {
@@ -526,6 +578,28 @@ async function sendOwnerNotification(order) {
       orderId: order._id,
       error: err.message,
     });
+    return { success: false, error: err.message };
+  }
+}
+
+// -------------------------
+// SEND: VIP Signup Notification (Owner)
+// -------------------------
+async function sendVipSignupNotification({ email, firstName, source }) {
+  try {
+    const mailOptions = {
+      from: `"Bow Shop Notification" <${process.env.GMAIL_USER}>`,
+      to: process.env.OWNER_EMAIL || process.env.GMAIL_USER,
+      subject: `⭐ New VIP Subscriber: ${email}`,
+      html: getVipSignupNotificationHTML({ email, firstName, source }),
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info("VIP signup notification sent", { email });
+
+    return { success: true };
+  } catch (err) {
+    logger.error("Failed to send VIP signup notification", { error: err.message });
     return { success: false, error: err.message };
   }
 }
@@ -561,5 +635,6 @@ async function sendTrackingEmail(order) {
 module.exports = {
   sendOrderConfirmationEmail,
   sendOwnerNotification,
+  sendVipSignupNotification,
   sendTrackingEmail,
 };
