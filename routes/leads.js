@@ -6,7 +6,7 @@ const logger = require("../logger");
 const router = express.Router();
 
 // ─── Helper: subscribe to Klaviyo VIP list ─────────────────────
-async function subscribeToKlaviyoVIP(email, firstName) {
+async function subscribeToKlaviyoVIP(email) {
   const key = process.env.KLAVIYO_PRIVATE_KEY;
   const listId = process.env.KLAVIYO_LIST_ID;
 
@@ -37,9 +37,7 @@ async function subscribeToKlaviyoVIP(email, firstName) {
                     attributes: {
                       email: email,
 
-                      // ✅ THIS IS THE CORRECT FIELD (final fix)
-                      first_name: firstName || "",
-
+                      // ✅ ONLY thing Klaviyo actually requires
                       subscriptions: {
                         email: {
                           marketing: {
@@ -88,10 +86,7 @@ router.post("/", async (req, res) => {
     // ─── EXISTING LEAD ─────────────────────────────
     if (lead) {
       if (!lead.vipSubscribed) {
-        const subscribed = await subscribeToKlaviyoVIP(
-          lead.email,
-          lead.firstName
-        );
+        const subscribed = await subscribeToKlaviyoVIP(lead.email);
 
         if (subscribed) {
           lead.vipSubscribed = true;
@@ -110,10 +105,7 @@ router.post("/", async (req, res) => {
       vipSubscribed: false,
     });
 
-    const subscribed = await subscribeToKlaviyoVIP(
-      lead.email,
-      lead.firstName
-    );
+    const subscribed = await subscribeToKlaviyoVIP(lead.email);
 
     if (subscribed) {
       lead.vipSubscribed = true;
