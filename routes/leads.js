@@ -1,6 +1,5 @@
 // routes/leads.js
 const express = require("express");
-const fetch = require("node-fetch");
 const Lead = require("../models/Lead");
 const { sendVipSignupNotification } = require("../services/emailService");
 const logger = require("../logger");
@@ -10,12 +9,15 @@ const router = express.Router();
 const KLAVIYO_API_PROFILES = "https://a.klaviyo.com/api/profiles";
 const KLAVIYO_PRIVATE_KEY = process.env.KLAVIYO_PRIVATE_KEY;
 
-// ─── Helper: create or update a Klaviyo profile ───────────
+// ─── Helper: create a Klaviyo profile ────────────────────
 async function createKlaviyoProfile(email, firstName = "", source = "website") {
   if (!KLAVIYO_PRIVATE_KEY) {
     logger.warn("Klaviyo private key missing — skipping Klaviyo sync");
     return false;
   }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
     const payload = {
@@ -31,6 +33,7 @@ async function createKlaviyoProfile(email, firstName = "", source = "website") {
 
     const res = await fetch(KLAVIYO_API_PROFILES, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/vnd.api+json",
         Accept: "application/vnd.api+json",
@@ -39,6 +42,8 @@ async function createKlaviyoProfile(email, firstName = "", source = "website") {
       },
       body: JSON.stringify(payload),
     });
+
+    clearTimeout(timeout);
 
     // 201 = created, 409 = profile already exists — both are success
     if (res.status === 201 || res.status === 409) {
@@ -49,7 +54,12 @@ async function createKlaviyoProfile(email, firstName = "", source = "website") {
     logger.error("Klaviyo error response", { status: res.status, body: text });
     return false;
   } catch (err) {
-    logger.error("Klaviyo fetch error", { error: err.message });
+    clearTimeout(timeout);
+    if (err.name === "AbortError") {
+      logger.error("Klaviyo request timed out", { email });
+    } else {
+      logger.error("Klaviyo fetch error", { error: err.message });
+    }
     return false;
   }
 }
@@ -76,6 +86,10 @@ router.post("/", async (req, res) => {
       });
     }
 
+    // Always respond to the client immediately — don't block on Klaviyo or email
+    res.status(201).json({ message: "Lead captured", lead });
+
+    // Run Klaviyo + email notification after response is sent
     if (!lead.vipSubscribed) {
       const profileCreated = await createKlaviyoProfile(
         lead.email,
@@ -88,11 +102,10 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Notify owner — uses its own lightweight template, not the order template
     try {
       await sendVipSignupNotification({
         email: lead.email,
-        firstName: firstName || lead.firstName || "Unknown",
+        firstName: firstName || lead.firstName || "",
         source,
       });
     } catch (err) {
@@ -100,11 +113,12 @@ router.post("/", async (req, res) => {
     }
 
     logger.info("VIP lead captured", { email: lead.email });
-
-    return res.status(201).json({ message: "Lead captured", lead });
   } catch (error) {
     logger.error("Lead route error", { error: error.message });
-    return res.status(500).json({ error: "Server error" });
+    // Only send error response if we haven't responded yet
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Server error" });
+    }
   }
 });
 
