@@ -7,7 +7,7 @@ const router = express.Router();
 
 // ─── Helper: subscribe to Klaviyo VIP list ─────────────────────
 async function subscribeToKlaviyoVIP(email, firstName) {
-  const key = process.env.KLAVIYO_PRIVATE_KEY; // your pk_ key
+  const key = process.env.KLAVIYO_PRIVATE_KEY;
   const listId = process.env.KLAVIYO_LIST_ID;
 
   if (!key || !listId) {
@@ -37,10 +37,8 @@ async function subscribeToKlaviyoVIP(email, firstName) {
                     attributes: {
                       email: email,
 
-                      // ✅ CORRECT FIELD (this was your bug)
-                      properties: {
-                        first_name: firstName || "",
-                      },
+                      // ✅ THIS IS THE CORRECT FIELD (final fix)
+                      first_name: firstName || "",
 
                       subscriptions: {
                         email: {
@@ -56,7 +54,7 @@ async function subscribeToKlaviyoVIP(email, firstName) {
             },
           },
         }),
-      },
+      }
     );
 
     if (!res.ok) {
@@ -66,10 +64,10 @@ async function subscribeToKlaviyoVIP(email, firstName) {
       return false;
     }
 
-    logger.info("✅ Klaviyo success", { email });
+    console.log("✅ Klaviyo success:", email);
     return true;
   } catch (err) {
-    logger.error("❌ Klaviyo fetch error", { error: err.message });
+    console.log("❌ Klaviyo fetch error:", err.message);
     return false;
   }
 }
@@ -92,7 +90,7 @@ router.post("/", async (req, res) => {
       if (!lead.vipSubscribed) {
         const subscribed = await subscribeToKlaviyoVIP(
           lead.email,
-          lead.firstName,
+          lead.firstName
         );
 
         if (subscribed) {
@@ -112,14 +110,17 @@ router.post("/", async (req, res) => {
       vipSubscribed: false,
     });
 
-    const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName);
+    const subscribed = await subscribeToKlaviyoVIP(
+      lead.email,
+      lead.firstName
+    );
 
     if (subscribed) {
       lead.vipSubscribed = true;
       await lead.save();
     }
 
-    // ─── EMAIL NOTIFICATION (this part still works)
+    // ─── EMAIL NOTIFICATION ─────────────────────
     try {
       await sendOwnerNotification({
         subject: "New VIP signup",
@@ -142,7 +143,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ─── GET /api/leads/status?email=... ───────────────────────────
+// ─── GET /api/leads/status ─────────────────────────────────────
 router.get("/status", async (req, res) => {
   try {
     const { email } = req.query;
