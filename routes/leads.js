@@ -16,7 +16,7 @@ async function addToKlaviyo(firstName, email) {
       return;
     }
 
-    // 1. Create or update the profile
+    // 1. Create or update the profile with email marketing consent
     const profileRes = await fetch("https://a.klaviyo.com/api/profiles/", {
       method: "POST",
       headers: {
@@ -30,6 +30,13 @@ async function addToKlaviyo(firstName, email) {
           attributes: {
             email,
             first_name: firstName || "",
+            subscriptions: {
+              email: {
+                marketing: {
+                  consent: "SUBSCRIBED",
+                },
+              },
+            },
           },
         },
       }),
@@ -46,7 +53,10 @@ async function addToKlaviyo(firstName, email) {
       profileId = profileData?.data?.id;
     } else {
       const err = await profileRes.text();
-      logger.error("Klaviyo profile creation failed", { status: profileRes.status, err });
+      logger.error("Klaviyo profile creation failed", {
+        status: profileRes.status,
+        err,
+      });
       return;
     }
 
@@ -118,7 +128,9 @@ router.post("/", async (req, res) => {
         customerEmail: lead.email,
       });
     } catch (emailErr) {
-      logger.error("Owner VIP notification failed", { error: emailErr.message });
+      logger.error("Owner VIP notification failed", {
+        error: emailErr.message,
+      });
     }
 
     logger.info("New VIP lead captured", { email: lead.email });
