@@ -3,46 +3,47 @@ const express = require("express");
 const Lead = require("../models/Lead");
 const { sendOwnerNotification } = require("../services/emailService");
 const logger = require("../logger");
+const fetch = require("node-fetch");
 
 const router = express.Router();
 
-// ─── Helper: subscribe profile to Klaviyo VIP list ─────────────────────────────
-async function subscribeToKlaviyoVIP(firstName, email) {
+// ─── Helper: subscribe a profile to VIP list with explicit consent ───────────
+async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
+  const key = process.env.KLAVIYO_PRIVATE_KEY; // your private key (pk_)
+  const listId = process.env.KLAVIYO_LIST_ID;
+  if (!key || !listId) {
+    logger.warn("Klaviyo key or list ID missing — skipping subscription");
+    return false;
+  }
+
+  const profileAttributes = {
+    email,
+    first_name: firstName || "",
+  };
+
+  // ✅ Explicit marketing consent if user opted in
+  if (optedIn) {
+    profileAttributes.subscriptions = {
+      email: { marketing: { consent: "SUBSCRIBED" } },
+    };
+  }
+
   try {
-    const privateKey = process.env.KLAVIYO_PRIVATE_KEY;
-    const listId = process.env.KLAVIYO_LIST_ID;
-
-    if (!privateKey || !listId) {
-      logger.warn("Klaviyo env vars not set — skipping sync");
-      return;
-    }
-
-    // ✅ Bulk subscription endpoint ensures profile is added + subscribed
     const res = await fetch(
       "https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Klaviyo-API-Key ${privateKey}`,
-          revision: "2024-02-15",
+          Authorization: `Klaviyo-API-Key ${key}`,
+          Revision: "2024-02-15", // REQUIRED by Klaviyo
         },
         body: JSON.stringify({
           data: {
             type: "profile-subscription-bulk-create-job",
             attributes: {
               list_id: listId,
-              profiles: {
-                data: [
-                  {
-                    type: "profile",
-                    attributes: {
-                      email,
-                      first_name: firstName || "",
-                    },
-                  },
-                ],
-              },
+              profiles: { data: [{ type: "profile", attributes: profileAttributes }] },
             },
           },
         }),
@@ -50,39 +51,45 @@ async function subscribeToKlaviyoVIP(firstName, email) {
     );
 
     if (!res.ok) {
-      const errText = await res.text();
+      const text = await res.text();
       logger.error("Klaviyo VIP subscription failed", {
         status: res.status,
-        body: errText,
+        response: text,
         email,
       });
-      return;
+      return false;
     }
 
     logger.info("Klaviyo VIP subscription successful", { email });
+    return true;
   } catch (err) {
     logger.error("Klaviyo VIP subscription error", { error: err.message, email });
+    return false;
   }
 }
 
-// ─── POST /api/leads ───────────────────────────────────────────────────────────
+// ─── POST /api/leads ────────────────────────────────────────────────────────
 router.post("/", async (req, res) => {
   try {
     const { firstName = "", email, source = "website" } = req.body;
 
-    if (!email) {
-      return res.status(400).json({ error: "Email is required" });
-    }
+    if (!email) return res.status(400).json({ error: "Email is required" });
 
     const normalizedEmail = email.toLowerCase().trim();
     let lead = await Lead.findOne({ email: normalizedEmail });
 
-    // ✅ If already a lead, subscribe to VIP list if not already subscribed
     if (lead) {
+      // Already a lead — subscribe to VIP list if not yet subscribed
       if (!lead.vipSubscribed) {
-        await subscribeToKlaviyoVIP(lead.firstName, lead.email);
-        lead.vipSubscribed = true;
-        await lead.save();
+        const subscribed = await subscribeToKlaviyoVIP(
+          lead.email,
+          lead.firstName,
+          true // user opted in by filling form
+        );
+        if (subscribed) {
+          lead.vipSubscribed = true;
+          await lead.save();
+        }
       }
       return res.json({ message: "Already on the list", lead });
     }
@@ -92,15 +99,15 @@ router.post("/", async (req, res) => {
       firstName: firstName.trim(),
       email: normalizedEmail,
       source,
-      vipSubscribed: false, // will update after successful subscription
+      vipSubscribed: false, // updated after successful subscription
     });
 
-    // ✅ Subscribe to Klaviyo VIP list
-    await subscribeToKlaviyoVIP(lead.firstName, lead.email);
-
-    // ✅ Mark as subscribed locally
-    lead.vipSubscribed = true;
-    await lead.save();
+    // ✅ Subscribe to Klaviyo VIP list with consent
+    const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName, true);
+    if (subscribed) {
+      lead.vipSubscribed = true;
+      await lead.save();
+    }
 
     // ✅ Notify site owner
     try {
