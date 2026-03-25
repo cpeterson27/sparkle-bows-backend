@@ -1,12 +1,21 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { createLead } from "../api/leads";
 
-export default function VipSignupSection() {
+// ✅ Added `user` prop to know if logged-in and subscribed
+export default function VipSignupSection({ user }) {
   const [form, setForm] = useState({ firstName: "", email: "", source: "homepage" });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [showSection, setShowSection] = useState(true);
+
+  // ✅ Hide VIP section for logged-in subscribed users
+  useEffect(() => {
+    if (user?.vipSubscribed) {
+      setShowSection(false);
+    }
+  }, [user]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -20,12 +29,14 @@ export default function VipSignupSection() {
     } catch (submissionError) {
       setError(
         submissionError.response?.data?.error ||
-          "We could not save your email right now. Please try again.",
+          "We could not save your email right now. Please try again."
       );
     } finally {
       setSaving(false);
     }
   };
+
+  if (!showSection) return null; // ✅ Early return hides the section
 
   return (
     <section className="border-y border-slate-200 bg-slate-950 text-white">
@@ -34,9 +45,7 @@ export default function VipSignupSection() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-rose-300">
             VIP list
           </p>
-          <h2 className="mt-4 font-serif text-4xl">
-            Be the first to know.
-          </h2>
+          <h2 className="mt-4 font-serif text-4xl">Be the first to know.</h2>
           <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300">
             New collections, limited restocks, and exclusive offers — straight
             to your inbox. No spam, ever.
@@ -90,11 +99,11 @@ export default function VipSignupSection() {
                 />
               </div>
 
-              {error ? (
+              {error && (
                 <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {error}
                 </div>
-              ) : null}
+              )}
 
               <button
                 type="submit"
