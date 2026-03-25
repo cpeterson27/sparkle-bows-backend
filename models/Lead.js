@@ -19,8 +19,12 @@ const leadSchema = new mongoose.Schema(
       trim: true,
       default: "website",
     },
+    vipSubscribed: {
+      type: Boolean,
+      default: false,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("Lead", leadSchema);

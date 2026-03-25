@@ -6,20 +6,23 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD,
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
   },
 });
 
-transporter.sendMail({
-  from: process.env.EMAIL_USER,
-  to: process.env.EMAIL_USER, // Send to yourself
-  subject: "Test Email",
-  text: "Nodemailer is working! 🎉",
-}, (err, info) => {
-  if (err) {
-    console.error("Error:", err);
-  } else {
-    console.log("Success! Check your email:", info.response);
-  }
-});
+transporter.sendMail(
+  {
+    from: process.env.GMAIL_USER,
+    to: process.env.GMAIL_USER, // Send to yourself
+    subject: "Test Email",
+    text: "Nodemailer is working! 🎉",
+  },
+  (err, info) => {
+    if (err) {
+      console.error("Error:", err);
+    } else {
+      console.log("Success! Check your email:", info.response);
+    }
+  },
+);
