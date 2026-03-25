@@ -22,7 +22,7 @@ async function addToKlaviyo(firstName, email) {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Klaviyo-API-Key ${privateKey}`,
-        revision: "2023-12-15",
+        revision: "2024-02-15",
       },
       body: JSON.stringify({
         data: {
@@ -73,7 +73,7 @@ async function addToKlaviyo(firstName, email) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Klaviyo-API-Key ${privateKey}`,
-          revision: "2023-12-15",
+          revision: "2024-02-15",
         },
         body: JSON.stringify({
           data: [{ type: "profile", id: profileId }],
