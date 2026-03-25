@@ -1,86 +1,56 @@
+// routes/leads.js
 const express = require("express");
+const fetch = require("node-fetch");
 const Lead = require("../models/Lead");
 const { sendOwnerNotification } = require("../services/emailService");
 const logger = require("../logger");
 
 const router = express.Router();
 
-// ─── Helper: create a Klaviyo profile ─────────────────────
-async function createKlaviyoProfile(email) {
-  const key = process.env.KLAVIYO_PRIVATE_KEY;
+// ─── Klaviyo API constants ───────────────────────────────
+const KLAVIYO_API_PROFILES = "https://a.klaviyo.com/api/profiles";
+const KLAVIYO_PRIVATE_KEY = process.env.KLAVIYO_PRIVATE_KEY;
 
-  if (!key) {
-    logger.warn("Klaviyo key missing");
+// ─── Helper: create a Klaviyo profile ─────────────────────
+async function createKlaviyoProfile(email, source = "website") {
+  if (!KLAVIYO_PRIVATE_KEY) {
+    logger.warn("Klaviyo private key missing");
     return false;
   }
 
   try {
-    const res = await fetch("https://a.klaviyo.com/api/profiles/", {
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    const payload = {
+      data: [
+        {
+          type: "profile",
+          attributes: {
+            email,
+            metadata: { source },
+          },
+        },
+      ],
+    };
+
+    const res = await fetch(KLAVIYO_API_PROFILES, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Klaviyo-API-Key ${key}`,
+        Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}`,
+        REVISION: today,
       },
-      body: JSON.stringify({
-        data: {
-          type: "profile",
-          attributes: {
-            email: email,
-          },
-        },
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
       const text = await res.text();
-      console.log("❌ KLAVIYO ERROR RESPONSE (profile):");
-      console.log(text);
+      logger.error("❌ KLAVIYO ERROR RESPONSE (profile):", { response: text });
       return false;
     }
 
     return true;
   } catch (err) {
-    console.log("❌ KLAVIYO fetch error (profile):", err.message);
-    return false;
-  }
-}
-
-// ─── Helper: subscribe a profile to a list ───────────────
-async function subscribeKlaviyoList(email) {
-  const key = process.env.KLAVIYO_PRIVATE_KEY;
-  const listId = process.env.KLAVIYO_LIST_ID;
-
-  if (!key || !listId) {
-    logger.warn("Klaviyo key or list ID missing");
-    return false;
-  }
-
-  try {
-    const res = await fetch(
-      `https://a.klaviyo.com/api/lists/${listId}/subscribe/`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Klaviyo-API-Key ${key}`,
-        },
-        body: JSON.stringify({
-          profiles: [{ email }],
-        }),
-      }
-    );
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.log("❌ KLAVIYO ERROR RESPONSE (list subscribe):");
-      console.log(text);
-      return false;
-    }
-
-    console.log("✅ Klaviyo subscribed:", email);
-    return true;
-  } catch (err) {
-    console.log("❌ KLAVIYO fetch error (list subscribe):", err.message);
+    logger.error("❌ KLAVIYO fetch error (profile):", { error: err.message });
     return false;
   }
 }
@@ -107,14 +77,10 @@ router.post("/", async (req, res) => {
     }
 
     if (!lead.vipSubscribed) {
-      const profileCreated = await createKlaviyoProfile(lead.email);
-
+      const profileCreated = await createKlaviyoProfile(lead.email, source);
       if (profileCreated) {
-        const subscribed = await subscribeKlaviyoList(lead.email);
-        if (subscribed) {
-          lead.vipSubscribed = true;
-          await lead.save();
-        }
+        lead.vipSubscribed = true;
+        await lead.save();
       }
     }
 
