@@ -53,7 +53,7 @@ function getOrderConfirmationHTML(order) {
             ${formatCurrency(item.price * item.quantity)}
           </td>
         </tr>
-      `
+      `,
     )
     .join("");
 
@@ -259,7 +259,10 @@ function getOrderConfirmationHTML(order) {
 // -------------------------
 function getOwnerNotificationHTML(order) {
   const itemsList = order.items
-    .map((item) => `• ${item.name} x${item.quantity} - ${formatCurrency(item.price * item.quantity)}`)
+    .map(
+      (item) =>
+        `• ${item.name} x${item.quantity} - ${formatCurrency(item.price * item.quantity)}`,
+    )
     .join("\n");
 
   return `
@@ -297,11 +300,15 @@ function getOwnerNotificationHTML(order) {
                       <td style="padding: 8px 0; color: #6b7280;">Shipping:</td>
                       <td style="padding: 8px 0; text-align: right; font-weight: bold;">${formatCurrency(order.shippingCost)}</td>
                     </tr>
-                    ${order.tax > 0 ? `
+                    ${
+                      order.tax > 0
+                        ? `
                     <tr>
                       <td style="padding: 8px 0; color: #6b7280;">Tax:</td>
                       <td style="padding: 8px 0; text-align: right; font-weight: bold;">${formatCurrency(order.tax)}</td>
-                    </tr>` : ""}
+                    </tr>`
+                        : ""
+                    }
                     <tr style="border-top: 2px solid #e5e7eb;">
                       <td style="padding: 12px 0 0 0; font-size: 18px; font-weight: bold;">TOTAL:</td>
                       <td style="padding: 12px 0 0 0; text-align: right; font-size: 20px; font-weight: bold; color: #10b981;">${formatCurrency(order.total)}</td>
@@ -316,11 +323,15 @@ function getOwnerNotificationHTML(order) {
                       ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.postalCode}
                     </p>
                   </div>
-                  ${order.isGift ? `
+                  ${
+                    order.isGift
+                      ? `
                   <div style="background-color: #fef3c7; border-radius: 8px; padding: 16px; margin: 20px 0;">
                     <p style="margin: 0; color: #92400e; font-weight: bold;">🎁 THIS IS A GIFT ORDER</p>
                     ${order.giftMessage ? `<p style="margin: 8px 0 0 0; color: #92400e; font-style: italic;">"${order.giftMessage}"</p>` : ""}
-                  </div>` : ""}
+                  </div>`
+                      : ""
+                  }
                   <div style="text-align: center; margin-top: 30px;">
                     <a href="${process.env.FRONTEND_URL}/admin" style="display: inline-block; background-color: #1f2937; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
                       View in Admin Panel
@@ -431,10 +442,14 @@ function getTrackingEmailHTML(order) {
                     <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Tracking Number</p>
                     <p style="margin: 0; color: #3b82f6; font-size: 24px; font-weight: bold; font-family: monospace;">${order.trackingNumber}</p>
                   </div>
-                  ${trackingURL ? `
+                  ${
+                    trackingURL
+                      ? `
                   <a href="${trackingURL}" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 24px; font-weight: bold; font-size: 16px; margin-bottom: 24px;">
                     Track Your Package →
-                  </a>` : ""}
+                  </a>`
+                      : ""
+                  }
                   <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; text-align: left; margin-top: 24px;">
                     <h3 style="margin: 0 0 12px 0; color: #1f2937;">Shipping Details:</h3>
                     <p style="margin: 0; color: #6b7280; line-height: 1.6;">
@@ -474,10 +489,16 @@ async function sendOrderConfirmationEmail(order) {
       subject: `Order Confirmed! 🎀 #${order._id.toString().slice(-8).toUpperCase()}`,
       html: getOrderConfirmationHTML(order),
     });
-    logger.info("Order confirmation email sent", { orderId: order._id, email: order.customerEmail });
+    logger.info("Order confirmation email sent", {
+      orderId: order._id,
+      email: order.customerEmail,
+    });
     return { success: true };
   } catch (err) {
-    logger.error("Failed to send order confirmation email", { orderId: order._id, error: err.message });
+    logger.error("Failed to send order confirmation email", {
+      orderId: order._id,
+      error: err.message,
+    });
     return { success: false, error: err.message };
   }
 }
@@ -493,10 +514,16 @@ async function sendOwnerNotification(order) {
       subject: `🎉 NEW ORDER #${order._id.toString().slice(-8).toUpperCase()} - $${order.total.toFixed(2)}`,
       html: getOwnerNotificationHTML(order),
     });
-    logger.info("Owner notification email sent", { orderId: order._id, total: order.total });
+    logger.info("Owner notification email sent", {
+      orderId: order._id,
+      total: order.total,
+    });
     return { success: true };
   } catch (err) {
-    logger.error("Failed to send owner notification email", { orderId: order._id, error: err.message });
+    logger.error("Failed to send owner notification email", {
+      orderId: order._id,
+      error: err.message,
+    });
     return { success: false, error: err.message };
   }
 }
@@ -506,17 +533,34 @@ async function sendOwnerNotification(order) {
 // -------------------------
 async function sendVipSignupNotification({ email, firstName, source }) {
   try {
-    await createTransporter().sendMail({
+    logger.info("Attempting SMTP connection...", {
+      gmailUser: process.env.GMAIL_USER ? "[SET]" : "[MISSING]",
+      ownerEmail: process.env.OWNER_EMAIL || "[GMAIL_USER]",
+    });
+    const transporter = createTransporter();
+
+    // Test connection
+    await transporter.verify();
+    logger.info("SMTP verified OK", { email });
+
+    await transporter.sendMail({
       from: `"Bow Shop Notification" <${process.env.GMAIL_USER}>`,
       to: process.env.OWNER_EMAIL || process.env.GMAIL_USER,
       subject: `⭐ New VIP Subscriber: ${email}`,
       html: getVipSignupNotificationHTML({ email, firstName, source }),
     });
-    logger.info("VIP signup notification sent", { email });
+    logger.info("✅ VIP signup notification sent SUCCESS", { email });
     return { success: true };
   } catch (err) {
-    logger.error("Failed to send VIP signup notification", { error: err.message });
-    return { success: false, error: err.message };
+    logger.error("❌ VIP signup FAILED", {
+      error: err.message,
+      code: err.code,
+      response: err.response,
+      email,
+      gmailUser: process.env.GMAIL_USER ? "[SET]" : "[MISSING]",
+      ownerEmail: process.env.OWNER_EMAIL || "[GMAIL_USER]",
+    });
+    return { success: false, error: err.message, code: err.code };
   }
 }
 
@@ -531,10 +575,16 @@ async function sendTrackingEmail(order) {
       subject: `Your Order Has Shipped! 🚚 #${order._id.toString().slice(-8).toUpperCase()}`,
       html: getTrackingEmailHTML(order),
     });
-    logger.info("Tracking email sent", { orderId: order._id, trackingNumber: order.trackingNumber });
+    logger.info("Tracking email sent", {
+      orderId: order._id,
+      trackingNumber: order.trackingNumber,
+    });
     return { success: true };
   } catch (err) {
-    logger.error("Failed to send tracking email", { orderId: order._id, error: err.message });
+    logger.error("Failed to send tracking email", {
+      orderId: order._id,
+      error: err.message,
+    });
     return { success: false, error: err.message };
   }
 }
