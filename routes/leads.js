@@ -9,19 +9,17 @@ const router = express.Router();
 
 // ─── Helper: subscribe a profile to VIP list with explicit consent ───────────
 async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
-  const key = process.env.KLAVIYO_PRIVATE_KEY; // your private key (pk_)
+  const key = process.env.KLAVIYO_PRIVATE_KEY; // pk_ key
   const listId = process.env.KLAVIYO_LIST_ID;
+
   if (!key || !listId) {
     logger.warn("Klaviyo key or list ID missing — skipping subscription");
     return false;
   }
 
-  const profileAttributes = {
-    email,
-    first_name: firstName || "",
-  };
+  const profileAttributes = { email, first_name: firstName || "" };
 
-  // ✅ Explicit marketing consent if user opted in
+  // ✅ Explicit marketing consent
   if (optedIn) {
     profileAttributes.subscriptions = {
       email: { marketing: { consent: "SUBSCRIBED" } },
@@ -35,8 +33,8 @@ async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Klaviyo-API-Key ${key}`,
-          Revision: "2024-02-15", // REQUIRED by Klaviyo
+          "Authorization": `Klaviyo-API-Key ${key}`,
+          "Revision": new Date().toISOString().split("T")[0], // REQUIRED by Klaviyo YYYY-MM-DD
         },
         body: JSON.stringify({
           data: {
@@ -79,13 +77,9 @@ router.post("/", async (req, res) => {
     let lead = await Lead.findOne({ email: normalizedEmail });
 
     if (lead) {
-      // Already a lead — subscribe to VIP list if not yet subscribed
+      // ✅ Already a lead — subscribe if not yet subscribed
       if (!lead.vipSubscribed) {
-        const subscribed = await subscribeToKlaviyoVIP(
-          lead.email,
-          lead.firstName,
-          true // user opted in by filling form
-        );
+        const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName, true);
         if (subscribed) {
           lead.vipSubscribed = true;
           await lead.save();
@@ -99,10 +93,10 @@ router.post("/", async (req, res) => {
       firstName: firstName.trim(),
       email: normalizedEmail,
       source,
-      vipSubscribed: false, // updated after successful subscription
+      vipSubscribed: false, // will update after successful subscription
     });
 
-    // ✅ Subscribe to Klaviyo VIP list with consent
+    // ✅ Subscribe to VIP list with explicit consent
     const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName, true);
     if (subscribed) {
       lead.vipSubscribed = true;
