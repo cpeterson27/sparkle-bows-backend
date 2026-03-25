@@ -2,28 +2,17 @@ const express = require("express");
 const Lead = require("../models/Lead");
 const { sendOwnerNotification } = require("../services/emailService");
 const logger = require("../logger");
-const fetch = require("node-fetch");
 
 const router = express.Router();
 
-// ─── Helper: subscribe a profile to Klaviyo VIP list ─────────
-async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
-  const key = process.env.KLAVIYO_PRIVATE_KEY; // PK key
+// ─── Helper: subscribe profile to Klaviyo VIP list ─────────
+async function subscribeToKlaviyoVIP(email, firstName) {
+  const key = process.env.KLAVIYO_PRIVATE_KEY;
   const listId = process.env.KLAVIYO_LIST_ID;
+
   if (!key || !listId) {
     logger.warn("Klaviyo key or list ID missing — skipping subscription");
     return false;
-  }
-
-  const profileAttributes = {
-    email,
-    fields: { first_name: firstName || "" }, // must be under `fields`
-  };
-
-  if (optedIn) {
-    profileAttributes.subscriptions = {
-      email: { marketing: { consent: "SUBSCRIBED" } },
-    };
   }
 
   try {
@@ -33,7 +22,7 @@ async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Klaviyo-API-Key ${key}`,
+          Authorization: `Bearer ${key}`, // ✅ FIXED AUTH
           Revision: "2024-02-15",
         },
         body: JSON.stringify({
@@ -41,7 +30,22 @@ async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
             type: "profile-subscription-bulk-create-job",
             attributes: {
               list_id: listId,
-              profiles: { data: [{ type: "profile", attributes: profileAttributes }] },
+              profiles: {
+                data: [
+                  {
+                    type: "profile",
+                    attributes: {
+                      email,
+                      first_name: firstName || "", // ✅ FIXED FIELD
+                      subscriptions: {
+                        email: {
+                          marketing: { consent: "SUBSCRIBED" },
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
             },
           },
         }),
@@ -50,40 +54,55 @@ async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
 
     if (!res.ok) {
       const text = await res.text();
-      logger.error("Klaviyo VIP subscription failed", { status: res.status, response: text, email });
+      logger.error("Klaviyo VIP subscription failed", {
+        status: res.status,
+        response: text,
+        email,
+      });
       return false;
     }
 
     logger.info("Klaviyo VIP subscription successful", { email });
     return true;
   } catch (err) {
-    logger.error("Klaviyo VIP subscription error", { error: err.message, email });
+    logger.error("Klaviyo VIP subscription error", {
+      error: err.message,
+      email,
+    });
     return false;
   }
 }
 
-// ─── POST /api/leads ───────────────────────────────────────────────
+// ─── POST /api/leads ───────────────────────────────
 router.post("/", async (req, res) => {
   try {
     const { firstName = "", email, source = "website" } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
 
     const normalizedEmail = email.toLowerCase().trim();
     let lead = await Lead.findOne({ email: normalizedEmail });
 
+    // ─── EXISTING LEAD ───────────────────────────────
     if (lead) {
-      // Already exists — subscribe if not yet VIP
       if (!lead.vipSubscribed) {
-        const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName, true);
+        const subscribed = await subscribeToKlaviyoVIP(
+          lead.email,
+          lead.firstName
+        );
+
         if (subscribed) {
           lead.vipSubscribed = true;
           await lead.save();
         }
       }
+
       return res.json({ message: "Already on the list", lead });
     }
 
-    // Create new lead
+    // ─── NEW LEAD ───────────────────────────────
     lead = await Lead.create({
       firstName: firstName.trim(),
       email: normalizedEmail,
@@ -91,14 +110,17 @@ router.post("/", async (req, res) => {
       vipSubscribed: false,
     });
 
-    // Subscribe to VIP list
-    const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName, true);
+    const subscribed = await subscribeToKlaviyoVIP(
+      lead.email,
+      lead.firstName
+    );
+
     if (subscribed) {
       lead.vipSubscribed = true;
       await lead.save();
     }
 
-    // Notify site owner
+    // ─── OWNER EMAIL NOTIFICATION ───────────────────────────────
     try {
       await sendOwnerNotification({
         subject: "New VIP signup",
@@ -106,14 +128,45 @@ router.post("/", async (req, res) => {
         customerEmail: lead.email,
       });
     } catch (emailErr) {
-      logger.error("Owner VIP notification failed", { error: emailErr.message });
+      logger.error("Owner VIP notification failed", {
+        error: emailErr.message,
+      });
     }
 
     logger.info("New VIP lead captured", { email: lead.email });
-    return res.status(201).json({ message: "Lead captured", lead });
+
+    return res.status(201).json({
+      message: "Lead captured",
+      lead,
+    });
   } catch (error) {
-    logger.error("Lead capture failed", { error: error.message });
-    return res.status(500).json({ error: "Could not save lead" });
+    logger.error("Lead capture failed", {
+      error: error.message,
+    });
+
+    return res.status(500).json({
+      error: "Could not save lead",
+    });
+  }
+});
+
+// ─── GET /api/leads/status?email= ───────────────────────────────
+// (needed for your frontend getVipStatus)
+router.get("/status", async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.json({ vipSubscribed: false });
+
+    const lead = await Lead.findOne({
+      email: email.toLowerCase().trim(),
+    });
+
+    return res.json({
+      vipSubscribed: !!lead?.vipSubscribed,
+    });
+  } catch (err) {
+    logger.error("VIP status check failed", err);
+    return res.json({ vipSubscribed: false });
   }
 });
 
