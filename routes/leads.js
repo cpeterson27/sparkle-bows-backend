@@ -1,4 +1,3 @@
-// routes/leads.js
 const express = require("express");
 const Lead = require("../models/Lead");
 const { sendOwnerNotification } = require("../services/emailService");
@@ -7,19 +6,20 @@ const fetch = require("node-fetch");
 
 const router = express.Router();
 
-// ─── Helper: subscribe a profile to VIP list with explicit consent ───────────
+// ─── Helper: subscribe a profile to Klaviyo VIP list ─────────
 async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
-  const key = process.env.KLAVIYO_PRIVATE_KEY; // pk_ key
+  const key = process.env.KLAVIYO_PRIVATE_KEY; // PK key
   const listId = process.env.KLAVIYO_LIST_ID;
-
   if (!key || !listId) {
     logger.warn("Klaviyo key or list ID missing — skipping subscription");
     return false;
   }
 
-  const profileAttributes = { email, first_name: firstName || "" };
+  const profileAttributes = {
+    email,
+    fields: { first_name: firstName || "" }, // must be under `fields`
+  };
 
-  // ✅ Explicit marketing consent
   if (optedIn) {
     profileAttributes.subscriptions = {
       email: { marketing: { consent: "SUBSCRIBED" } },
@@ -33,8 +33,8 @@ async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Klaviyo-API-Key ${key}`,
-          "Revision": new Date().toISOString().split("T")[0], // REQUIRED by Klaviyo YYYY-MM-DD
+          Authorization: `Klaviyo-API-Key ${key}`,
+          Revision: "2024-02-15",
         },
         body: JSON.stringify({
           data: {
@@ -50,11 +50,7 @@ async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
 
     if (!res.ok) {
       const text = await res.text();
-      logger.error("Klaviyo VIP subscription failed", {
-        status: res.status,
-        response: text,
-        email,
-      });
+      logger.error("Klaviyo VIP subscription failed", { status: res.status, response: text, email });
       return false;
     }
 
@@ -66,18 +62,17 @@ async function subscribeToKlaviyoVIP(email, firstName, optedIn = true) {
   }
 }
 
-// ─── POST /api/leads ────────────────────────────────────────────────────────
+// ─── POST /api/leads ───────────────────────────────────────────────
 router.post("/", async (req, res) => {
   try {
     const { firstName = "", email, source = "website" } = req.body;
-
     if (!email) return res.status(400).json({ error: "Email is required" });
 
     const normalizedEmail = email.toLowerCase().trim();
     let lead = await Lead.findOne({ email: normalizedEmail });
 
     if (lead) {
-      // ✅ Already a lead — subscribe if not yet subscribed
+      // Already exists — subscribe if not yet VIP
       if (!lead.vipSubscribed) {
         const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName, true);
         if (subscribed) {
@@ -88,22 +83,22 @@ router.post("/", async (req, res) => {
       return res.json({ message: "Already on the list", lead });
     }
 
-    // ✅ Create new lead
+    // Create new lead
     lead = await Lead.create({
       firstName: firstName.trim(),
       email: normalizedEmail,
       source,
-      vipSubscribed: false, // will update after successful subscription
+      vipSubscribed: false,
     });
 
-    // ✅ Subscribe to VIP list with explicit consent
+    // Subscribe to VIP list
     const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName, true);
     if (subscribed) {
       lead.vipSubscribed = true;
       await lead.save();
     }
 
-    // ✅ Notify site owner
+    // Notify site owner
     try {
       await sendOwnerNotification({
         subject: "New VIP signup",
