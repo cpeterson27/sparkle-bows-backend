@@ -6,13 +6,12 @@ const logger = require("../logger");
 const router = express.Router();
 
 // ─────────────────────────────────────────────
-// ✅ KLAVIYO TRACK EVENT (THIS WORKS RELIABLY)
+// ✅ KLAVIYO TRACK EVENT (ASYNC, NON-BLOCKING)
 // ─────────────────────────────────────────────
-async function sendToKlaviyo(email, firstName, source) {
+async function sendToKlaviyo(email, firstName = "", source = "website") {
   const key = process.env.KLAVIYO_PRIVATE_KEY;
-
   if (!key) {
-    logger.warn("Klaviyo key missing");
+    logger.warn("Klaviyo private key missing, skipping event");
     return;
   }
 
@@ -29,25 +28,12 @@ async function sendToKlaviyo(email, firstName, source) {
           type: "event",
           attributes: {
             metric: {
-              data: {
-                type: "metric",
-                attributes: {
-                  name: "VIP Signup",
-                },
-              },
+              data: { type: "metric", attributes: { name: "VIP Signup" } },
             },
             profile: {
-              data: {
-                type: "profile",
-                attributes: {
-                  email: email,
-                  first_name: firstName || "",
-                },
-              },
+              data: { type: "profile", attributes: { email, first_name: firstName } },
             },
-            properties: {
-              source: source || "website",
-            },
+            properties: { source },
           },
         },
       }),
@@ -55,13 +41,12 @@ async function sendToKlaviyo(email, firstName, source) {
 
     if (!res.ok) {
       const text = await res.text();
-      console.log("❌ KLAVIYO ERROR RESPONSE:");
-      console.log(text);
+      logger.error("Klaviyo event failed", { status: res.status, body: text, email });
     } else {
-      console.log("✅ Klaviyo event sent:", email);
+      logger.info("Klaviyo event sent", { email });
     }
   } catch (err) {
-    console.log("❌ Klaviyo fetch error:", err.message);
+    logger.error("Klaviyo fetch error", { error: err.message, email });
   }
 }
 
@@ -69,15 +54,15 @@ async function sendToKlaviyo(email, firstName, source) {
 // 🚀 POST /api/leads
 // ─────────────────────────────────────────────
 router.post("/", async (req, res) => {
+  const { email, firstName = "", source = "website" } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
   try {
-    const { email, firstName, source = "website" } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-
     let lead = await Lead.findOne({ email: normalizedEmail });
 
     if (!lead) {
@@ -85,35 +70,33 @@ router.post("/", async (req, res) => {
         email: normalizedEmail,
         firstName,
         source,
-        vipSubscribed: true,
+        vipSubscribed: false, // start as false, mark true after Klaviyo
       });
     }
 
-    // ✅ Send to Klaviyo (non-blocking)
-    sendToKlaviyo(normalizedEmail, firstName, source);
+    // ✅ Respond immediately
+    res.status(201).json({ message: "Lead captured", lead });
 
-    // ✅ Send owner notification (FIXED)
-    try {
-      await sendVipSignupNotification({
-        email: normalizedEmail,
-        firstName,
-        source,
-      });
-    } catch (err) {
-      logger.error("Failed to send VIP signup notification", {
-        error: err.message,
-      });
-    }
-
-    logger.info("VIP lead captured", { email: normalizedEmail });
-
-    return res.status(201).json({
-      message: "Lead captured",
-      lead,
+    // ✅ Send Klaviyo event async
+    sendToKlaviyo(normalizedEmail, firstName, source).then(async () => {
+      // Mark vipSubscribed if Klaviyo succeeded
+      lead.vipSubscribed = true;
+      await lead.save();
+      logger.info("Lead vipSubscribed updated", { email: normalizedEmail });
+    }).catch(err => {
+      logger.error("Failed to update vipSubscribed after Klaviyo", { error: err.message, email: normalizedEmail });
     });
-  } catch (error) {
-    logger.error("Lead route error", { error: error.message });
-    return res.status(500).json({ error: "Server error" });
+
+    // ✅ Send owner notification async
+    sendVipSignupNotification({ email: normalizedEmail, firstName, source })
+      .then(() => logger.info("Owner notification sent", { email: normalizedEmail }))
+      .catch(err => logger.error("Owner notification failed", { error: err.message, email: normalizedEmail }));
+
+  } catch (err) {
+    logger.error("Lead route error", { error: err.message, email: normalizedEmail });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Server error" });
+    }
   }
 });
 
@@ -121,22 +104,14 @@ router.post("/", async (req, res) => {
 // 🔍 GET /api/leads/status
 // ─────────────────────────────────────────────
 router.get("/status", async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.json({ vipSubscribed: false });
+
   try {
-    const { email } = req.query;
-
-    if (!email) {
-      return res.json({ vipSubscribed: false });
-    }
-
-    const lead = await Lead.findOne({
-      email: email.toLowerCase().trim(),
-    });
-
-    return res.json({
-      vipSubscribed: !!lead,
-    });
+    const lead = await Lead.findOne({ email: email.toLowerCase().trim() });
+    return res.json({ vipSubscribed: !!lead?.vipSubscribed });
   } catch (err) {
-    logger.error("VIP status error", { error: err.message });
+    logger.error("VIP status error", { error: err.message, email });
     return res.json({ vipSubscribed: false });
   }
 });
