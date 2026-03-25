@@ -5,13 +5,13 @@ const logger = require("../logger");
 
 const router = express.Router();
 
-// ─── Helper: subscribe profile to Klaviyo VIP list ─────────
+// ─── Helper: subscribe to Klaviyo VIP list ─────────────────────
 async function subscribeToKlaviyoVIP(email, firstName) {
-  const key = process.env.KLAVIYO_PRIVATE_KEY;
+  const key = process.env.KLAVIYO_PRIVATE_KEY; // your pk_ key
   const listId = process.env.KLAVIYO_LIST_ID;
 
   if (!key || !listId) {
-    logger.warn("Klaviyo key or list ID missing — skipping subscription");
+    logger.warn("Klaviyo key or list ID missing");
     return false;
   }
 
@@ -22,8 +22,8 @@ async function subscribeToKlaviyoVIP(email, firstName) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`, // ✅ FIXED AUTH
-          Revision: "2024-02-15",
+          Authorization: `Klaviyo-API-Key ${key}`,
+          revision: "2024-02-15",
         },
         body: JSON.stringify({
           data: {
@@ -35,11 +35,18 @@ async function subscribeToKlaviyoVIP(email, firstName) {
                   {
                     type: "profile",
                     attributes: {
-                      email,
-                      first_name: firstName || "", // ✅ FIXED FIELD
+                      email: email,
+
+                      // ✅ CORRECT FIELD (this was your bug)
+                      properties: {
+                        first_name: firstName || "",
+                      },
+
                       subscriptions: {
                         email: {
-                          marketing: { consent: "SUBSCRIBED" },
+                          marketing: {
+                            consent: "SUBSCRIBED",
+                          },
                         },
                       },
                     },
@@ -54,26 +61,19 @@ async function subscribeToKlaviyoVIP(email, firstName) {
 
     if (!res.ok) {
       const text = await res.text();
-      logger.error("Klaviyo VIP subscription failed", {
-        status: res.status,
-        response: text,
-        email,
-      });
+      logger.error("❌ KLAVIYO ERROR", { status: res.status, response: text });
       return false;
     }
 
-    logger.info("Klaviyo VIP subscription successful", { email });
+    logger.info("✅ Klaviyo success", { email });
     return true;
   } catch (err) {
-    logger.error("Klaviyo VIP subscription error", {
-      error: err.message,
-      email,
-    });
+    logger.error("❌ Klaviyo fetch error", { error: err.message });
     return false;
   }
 }
 
-// ─── POST /api/leads ───────────────────────────────
+// ─── POST /api/leads ───────────────────────────────────────────
 router.post("/", async (req, res) => {
   try {
     const { firstName = "", email, source = "website" } = req.body;
@@ -83,9 +83,10 @@ router.post("/", async (req, res) => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+
     let lead = await Lead.findOne({ email: normalizedEmail });
 
-    // ─── EXISTING LEAD ───────────────────────────────
+    // ─── EXISTING LEAD ─────────────────────────────
     if (lead) {
       if (!lead.vipSubscribed) {
         const subscribed = await subscribeToKlaviyoVIP(
@@ -102,7 +103,7 @@ router.post("/", async (req, res) => {
       return res.json({ message: "Already on the list", lead });
     }
 
-    // ─── NEW LEAD ───────────────────────────────
+    // ─── NEW LEAD ─────────────────────────────
     lead = await Lead.create({
       firstName: firstName.trim(),
       email: normalizedEmail,
@@ -120,17 +121,15 @@ router.post("/", async (req, res) => {
       await lead.save();
     }
 
-    // ─── OWNER EMAIL NOTIFICATION ───────────────────────────────
+    // ─── EMAIL NOTIFICATION (this part still works)
     try {
       await sendOwnerNotification({
         subject: "New VIP signup",
         customerName: lead.firstName || "Someone",
         customerEmail: lead.email,
       });
-    } catch (emailErr) {
-      logger.error("Owner VIP notification failed", {
-        error: emailErr.message,
-      });
+    } catch (err) {
+      logger.error("Owner email failed", { error: err.message });
     }
 
     logger.info("New VIP lead captured", { email: lead.email });
@@ -140,22 +139,19 @@ router.post("/", async (req, res) => {
       lead,
     });
   } catch (error) {
-    logger.error("Lead capture failed", {
-      error: error.message,
-    });
-
-    return res.status(500).json({
-      error: "Could not save lead",
-    });
+    logger.error("Lead route error", { error: error.message });
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
-// ─── GET /api/leads/status?email= ───────────────────────────────
-// (needed for your frontend getVipStatus)
+// ─── GET /api/leads/status?email=... ───────────────────────────
 router.get("/status", async (req, res) => {
   try {
     const { email } = req.query;
-    if (!email) return res.json({ vipSubscribed: false });
+
+    if (!email) {
+      return res.json({ vipSubscribed: false });
+    }
 
     const lead = await Lead.findOne({
       email: email.toLowerCase().trim(),
@@ -165,7 +161,7 @@ router.get("/status", async (req, res) => {
       vipSubscribed: !!lead?.vipSubscribed,
     });
   } catch (err) {
-    logger.error("VIP status check failed", err);
+    logger.error("VIP status error", { error: err.message });
     return res.json({ vipSubscribed: false });
   }
 });
