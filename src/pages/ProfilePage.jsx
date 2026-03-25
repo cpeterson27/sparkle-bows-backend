@@ -21,7 +21,6 @@ import {
   Camera,
   Lock,
   Check,
-  BadgeCheck,
   Sparkles,
 } from "lucide-react";
 import api from "../api/axios.config";
