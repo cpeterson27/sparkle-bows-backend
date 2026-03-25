@@ -99,17 +99,25 @@ router.post("/", async (req, res) => {
         });
       });
 
-    // ✅ Send owner notification async
-    sendVipSignupNotification({ email: normalizedEmail, firstName, source })
-      .then(() =>
-        logger.info("Owner notification sent", { email: normalizedEmail }),
-      )
-      .catch((err) =>
-        logger.error("Owner notification failed", {
-          error: err.message,
-          email: normalizedEmail,
-        }),
-      );
+    // ✅ Send owner notification SYNC - blocks response for testing/debug
+    logger.info("🔄 Sending VIP notification SYNC...", {
+      email: normalizedEmail,
+    });
+    const result = await sendVipSignupNotification({
+      email: normalizedEmail,
+      firstName,
+      source,
+    });
+    if (result.success) {
+      logger.info("✅ VIP owner notification sent SYNC", {
+        email: normalizedEmail,
+      });
+    } else {
+      logger.error("❌ VIP owner notification FAILED", {
+        email: normalizedEmail,
+        error: result.error,
+      });
+    }
   } catch (err) {
     logger.error("Lead route error", {
       error: err.message,
