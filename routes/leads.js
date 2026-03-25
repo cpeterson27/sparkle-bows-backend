@@ -45,7 +45,6 @@ async function addToKlaviyo(firstName, email) {
     let profileId;
 
     if (profileRes.status === 409) {
-      // Profile already exists — extract id from conflict response
       const conflictData = await profileRes.json();
       profileId = conflictData?.errors?.[0]?.meta?.duplicate_profile_id;
     } else if (profileRes.ok) {
@@ -88,7 +87,6 @@ async function addToKlaviyo(firstName, email) {
       logger.error("Klaviyo list add failed", { status: listRes.status, err });
     }
   } catch (err) {
-    // Never let Klaviyo failure break the signup
     logger.error("Klaviyo sync error", { error: err.message });
   }
 }
@@ -106,7 +104,6 @@ router.post("/", async (req, res) => {
     const existingLead = await Lead.findOne({ email: normalizedEmail });
 
     if (existingLead) {
-      // Still sync to Klaviyo in case they weren't added before
       await addToKlaviyo(firstName.trim(), normalizedEmail);
       return res.json({ message: "Already on the list", lead: existingLead });
     }
@@ -117,10 +114,8 @@ router.post("/", async (req, res) => {
       source,
     });
 
-    // Sync to Klaviyo VIP list
     await addToKlaviyo(lead.firstName, lead.email);
 
-    // Notify owner
     try {
       await sendOwnerNotification({
         subject: "New VIP signup",

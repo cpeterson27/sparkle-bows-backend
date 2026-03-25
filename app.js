@@ -17,6 +17,9 @@ const validationRoutes = require("./routes/validation");
 
 const app = express();
 
+// 🔥 REQUIRED FIX (prevents ERR_ERL_UNEXPECTED_X_FORWARDED_FOR)
+app.set("trust proxy", 1);
+
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:3000",
   process.env.FRONTEND_CUSTOM_DOMAIN || "https://www.sparklebows.shop",
@@ -86,7 +89,7 @@ app.use("/api/expenses", require("./routes/expenses"));
 app.use("/api/checkout", require("./routes/checkout"));
 app.use("/api/user", userRoutes);
 app.use("/api/leads", require("./routes/leads"));
-app.use("/api/validation", validationRoutes); // ✅ FIXED: was "/api" (too broad)
+app.use("/api/validation", validationRoutes);
 
 // ------------------------
 // HEALTH CHECK
@@ -100,7 +103,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // ------------------------
-// 404 HANDLER — ✅ FIXED: no wildcard glob, just checks path prefix
+// 404 HANDLER
 // ------------------------
 app.use((req, res, next) => {
   if (req.path.startsWith("/api")) {

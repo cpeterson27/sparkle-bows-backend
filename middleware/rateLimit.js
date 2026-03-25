@@ -1,52 +1,56 @@
-// middleware/rateLimit.js - PRODUCTION READY
+// middleware/rateLimit.js
 const rateLimit = require("express-rate-limit");
 
-// General API rate limiter - reasonable limits for normal usage
+// Shared config to avoid repetition
+const baseConfig = {
+  standardHeaders: true,
+  legacyHeaders: false,
+  trustProxy: true, // 🔥 Fix for ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+};
+
+// General API rate limiter
 const generalLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute window
-  max: 100, // 100 requests per minute
+  ...baseConfig,
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100,
   message: "Too many requests, please slow down.",
-  standardHeaders: true,
-  legacyHeaders: false,
   skip: (req) => {
-    // Skip rate limiting for certain safe endpoints
-    return req.path.startsWith('/api/products') || 
-           req.path.startsWith('/api/reviews');
-  }
+    return (
+      req.path.startsWith("/api/products") ||
+      req.path.startsWith("/api/reviews")
+    );
+  },
 });
 
-// Auth-specific rate limiter - prevent brute force
+// Auth limiter (login/register)
 const authLimiter = rateLimit({
+  ...baseConfig,
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 login attempts per 15 minutes
+  max: 10,
   message: "Too many login attempts, please try again later.",
-  standardHeaders: true,
-  legacyHeaders: false,
   skipSuccessfulRequests: true,
 });
 
-// Refresh token limiter - very lenient
+// Refresh token limiter
 const refreshTokenLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 20, // 20 refresh attempts per minute
+  ...baseConfig,
+  windowMs: 1 * 60 * 1000,
+  max: 20,
   message: "Too many refresh attempts.",
-  standardHeaders: true,
-  legacyHeaders: false,
   skipSuccessfulRequests: true,
 });
 
-// Cart limiter - separate from general API
+// Cart limiter
 const cartLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 30, // 30 cart updates per minute
+  ...baseConfig,
+  windowMs: 1 * 60 * 1000,
+  max: 30,
   message: "Too many cart updates.",
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
-module.exports = { 
-  generalLimiter, 
-  authLimiter, 
+module.exports = {
+  generalLimiter,
+  authLimiter,
   refreshTokenLimiter,
-  cartLimiter 
+  cartLimiter,
 };
