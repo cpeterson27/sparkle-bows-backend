@@ -1,3 +1,4 @@
+// routes/leads.js
 const express = require("express");
 const Lead = require("../models/Lead");
 const { sendOwnerNotification } = require("../services/emailService");
@@ -5,8 +6,8 @@ const logger = require("../logger");
 
 const router = express.Router();
 
-// ─── Helper: add profile to Klaviyo list ──────────────────────────────────────
-async function addToKlaviyo(firstName, email) {
+// ─── Helper: subscribe profile to Klaviyo VIP list ─────────────────────────────
+async function subscribeToKlaviyoVIP(firstName, email) {
   try {
     const privateKey = process.env.KLAVIYO_PRIVATE_KEY;
     const listId = process.env.KLAVIYO_LIST_ID;
@@ -16,57 +17,9 @@ async function addToKlaviyo(firstName, email) {
       return;
     }
 
-    // 1. Create or update the profile with email marketing consent
-    const profileRes = await fetch("https://a.klaviyo.com/api/profiles/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Klaviyo-API-Key ${privateKey}`,
-        revision: "2024-02-15",
-      },
-      body: JSON.stringify({
-        data: {
-          type: "profile",
-          attributes: {
-            email,
-            first_name: firstName || "",
-            subscriptions: {
-              email: {
-                marketing: {
-                  consent: "SUBSCRIBED",
-                },
-              },
-            },
-          },
-        },
-      }),
-    });
-
-    let profileId;
-
-    if (profileRes.status === 409) {
-      const conflictData = await profileRes.json();
-      profileId = conflictData?.errors?.[0]?.meta?.duplicate_profile_id;
-    } else if (profileRes.ok) {
-      const profileData = await profileRes.json();
-      profileId = profileData?.data?.id;
-    } else {
-      const err = await profileRes.text();
-      logger.error("Klaviyo profile creation failed", {
-        status: profileRes.status,
-        err,
-      });
-      return;
-    }
-
-    if (!profileId) {
-      logger.error("Klaviyo: could not determine profile ID");
-      return;
-    }
-
-    // 2. Add profile to list
-    const listRes = await fetch(
-      `https://a.klaviyo.com/api/lists/${listId}/relationships/profiles/`,
+    // ✅ Bulk subscription endpoint ensures profile is added + subscribed
+    const res = await fetch(
+      "https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/",
       {
         method: "POST",
         headers: {
@@ -75,19 +28,40 @@ async function addToKlaviyo(firstName, email) {
           revision: "2024-02-15",
         },
         body: JSON.stringify({
-          data: [{ type: "profile", id: profileId }],
+          data: {
+            type: "profile-subscription-bulk-create-job",
+            attributes: {
+              list_id: listId,
+              profiles: {
+                data: [
+                  {
+                    type: "profile",
+                    attributes: {
+                      email,
+                      first_name: firstName || "",
+                    },
+                  },
+                ],
+              },
+            },
+          },
         }),
       }
     );
 
-    if (listRes.ok || listRes.status === 204) {
-      logger.info("Klaviyo: profile added to VIP list", { email, profileId });
-    } else {
-      const err = await listRes.text();
-      logger.error("Klaviyo list add failed", { status: listRes.status, err });
+    if (!res.ok) {
+      const errText = await res.text();
+      logger.error("Klaviyo VIP subscription failed", {
+        status: res.status,
+        body: errText,
+        email,
+      });
+      return;
     }
+
+    logger.info("Klaviyo VIP subscription successful", { email });
   } catch (err) {
-    logger.error("Klaviyo sync error", { error: err.message });
+    logger.error("Klaviyo VIP subscription error", { error: err.message, email });
   }
 }
 
@@ -101,21 +75,34 @@ router.post("/", async (req, res) => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const existingLead = await Lead.findOne({ email: normalizedEmail });
+    let lead = await Lead.findOne({ email: normalizedEmail });
 
-    if (existingLead) {
-      await addToKlaviyo(firstName.trim(), normalizedEmail);
-      return res.json({ message: "Already on the list", lead: existingLead });
+    // ✅ If already a lead, subscribe to VIP list if not already subscribed
+    if (lead) {
+      if (!lead.vipSubscribed) {
+        await subscribeToKlaviyoVIP(lead.firstName, lead.email);
+        lead.vipSubscribed = true;
+        await lead.save();
+      }
+      return res.json({ message: "Already on the list", lead });
     }
 
-    const lead = await Lead.create({
+    // ✅ Create new lead
+    lead = await Lead.create({
       firstName: firstName.trim(),
       email: normalizedEmail,
       source,
+      vipSubscribed: false, // will update after successful subscription
     });
 
-    await addToKlaviyo(lead.firstName, lead.email);
+    // ✅ Subscribe to Klaviyo VIP list
+    await subscribeToKlaviyoVIP(lead.firstName, lead.email);
 
+    // ✅ Mark as subscribed locally
+    lead.vipSubscribed = true;
+    await lead.save();
+
+    // ✅ Notify site owner
     try {
       await sendOwnerNotification({
         subject: "New VIP signup",
@@ -123,9 +110,7 @@ router.post("/", async (req, res) => {
         customerEmail: lead.email,
       });
     } catch (emailErr) {
-      logger.error("Owner VIP notification failed", {
-        error: emailErr.message,
-      });
+      logger.error("Owner VIP notification failed", { error: emailErr.message });
     }
 
     logger.info("New VIP lead captured", { email: lead.email });
