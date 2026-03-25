@@ -56,12 +56,13 @@ async function subscribeToKlaviyoVIP(email, firstName) {
             },
           },
         }),
-      }
+      },
     );
 
     if (!res.ok) {
       const text = await res.text();
-      logger.error("❌ KLAVIYO ERROR", { status: res.status, response: text });
+      console.log("❌ KLAVIYO ERROR RESPONSE:");
+      console.log(text);
       return false;
     }
 
@@ -91,7 +92,7 @@ router.post("/", async (req, res) => {
       if (!lead.vipSubscribed) {
         const subscribed = await subscribeToKlaviyoVIP(
           lead.email,
-          lead.firstName
+          lead.firstName,
         );
 
         if (subscribed) {
@@ -111,10 +112,7 @@ router.post("/", async (req, res) => {
       vipSubscribed: false,
     });
 
-    const subscribed = await subscribeToKlaviyoVIP(
-      lead.email,
-      lead.firstName
-    );
+    const subscribed = await subscribeToKlaviyoVIP(lead.email, lead.firstName);
 
     if (subscribed) {
       lead.vipSubscribed = true;
