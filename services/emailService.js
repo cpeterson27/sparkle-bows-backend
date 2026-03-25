@@ -2,17 +2,19 @@ const nodemailer = require("nodemailer");
 const logger = require("../logger");
 
 // -------------------------
-// Email Transporter (Gmail with App Password)
+// Email Transporter (created fresh each time to pick up env vars)
 // -------------------------
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS,
-  },
-});
+function createTransporter() {
+  return nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_PASS,
+    },
+  });
+}
 
 // -------------------------
 // Helper: Format Currency
@@ -235,12 +237,8 @@ function getOrderConfirmationHTML(order) {
 
               <tr>
                 <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                  <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">
-                    Questions? Reply to this email!
-                  </p>
-                  <p style="margin: 0 0 16px 0; color: #ec4899; font-weight: bold;">
-                    ${process.env.GMAIL_USER}
-                  </p>
+                  <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Questions? Reply to this email!</p>
+                  <p style="margin: 0 0 16px 0; color: #ec4899; font-weight: bold;">${process.env.GMAIL_USER}</p>
                   <p style="margin: 0; color: #9ca3af; font-size: 12px;">
                     © ${new Date().getFullYear()} Sparkle & Twirl Bows. Made with 💖 by a 7-year-old ballerina!
                   </p>
@@ -276,29 +274,20 @@ function getOwnerNotificationHTML(order) {
         <tr>
           <td align="center">
             <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 8px; overflow: hidden;">
-              
               <tr>
                 <td style="background-color: #1f2937; padding: 20px; text-align: center;">
                   <h1 style="margin: 0; color: white; font-size: 24px;">🎉 NEW ORDER RECEIVED!</h1>
                 </td>
               </tr>
-
               <tr>
                 <td style="padding: 30px;">
                   <h2 style="margin: 0 0 20px 0; color: #1f2937;">Order #${order._id.toString().slice(-8).toUpperCase()}</h2>
-                  
                   <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin-bottom: 20px;">
-                    <p style="margin: 0; color: #92400e; font-weight: bold;">
-                      <strong>Customer:</strong> ${order.customerName}
-                    </p>
-                    <p style="margin: 8px 0 0 0; color: #92400e;">
-                      <strong>Email:</strong> ${order.customerEmail}
-                    </p>
+                    <p style="margin: 0; color: #92400e; font-weight: bold;"><strong>Customer:</strong> ${order.customerName}</p>
+                    <p style="margin: 8px 0 0 0; color: #92400e;"><strong>Email:</strong> ${order.customerEmail}</p>
                   </div>
-
                   <h3 style="margin: 0 0 12px 0; color: #1f2937;">Items:</h3>
                   <pre style="background-color: #f9fafb; padding: 16px; border-radius: 4px; font-family: monospace; font-size: 14px; overflow-x: auto;">${itemsList}</pre>
-
                   <table width="100%" cellpadding="0" cellspacing="0" style="margin: 20px 0;">
                     <tr>
                       <td style="padding: 8px 0; color: #6b7280;">Subtotal:</td>
@@ -308,24 +297,16 @@ function getOwnerNotificationHTML(order) {
                       <td style="padding: 8px 0; color: #6b7280;">Shipping:</td>
                       <td style="padding: 8px 0; text-align: right; font-weight: bold;">${formatCurrency(order.shippingCost)}</td>
                     </tr>
-                    ${
-                      order.tax > 0
-                        ? `
+                    ${order.tax > 0 ? `
                     <tr>
                       <td style="padding: 8px 0; color: #6b7280;">Tax:</td>
                       <td style="padding: 8px 0; text-align: right; font-weight: bold;">${formatCurrency(order.tax)}</td>
-                    </tr>
-                    `
-                        : ""
-                    }
+                    </tr>` : ""}
                     <tr style="border-top: 2px solid #e5e7eb;">
                       <td style="padding: 12px 0 0 0; font-size: 18px; font-weight: bold;">TOTAL:</td>
-                      <td style="padding: 12px 0 0 0; text-align: right; font-size: 20px; font-weight: bold; color: #10b981;">
-                        ${formatCurrency(order.total)}
-                      </td>
+                      <td style="padding: 12px 0 0 0; text-align: right; font-size: 20px; font-weight: bold; color: #10b981;">${formatCurrency(order.total)}</td>
                     </tr>
                   </table>
-
                   <div style="background-color: #eff6ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
                     <h4 style="margin: 0 0 12px 0; color: #1e40af;">📦 Ship To:</h4>
                     <p style="margin: 0; color: #1e3a8a; line-height: 1.6;">
@@ -335,27 +316,18 @@ function getOwnerNotificationHTML(order) {
                       ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.postalCode}
                     </p>
                   </div>
-
-                  ${
-                    order.isGift
-                      ? `
+                  ${order.isGift ? `
                   <div style="background-color: #fef3c7; border-radius: 8px; padding: 16px; margin: 20px 0;">
                     <p style="margin: 0; color: #92400e; font-weight: bold;">🎁 THIS IS A GIFT ORDER</p>
                     ${order.giftMessage ? `<p style="margin: 8px 0 0 0; color: #92400e; font-style: italic;">"${order.giftMessage}"</p>` : ""}
-                  </div>
-                  `
-                      : ""
-                  }
-
+                  </div>` : ""}
                   <div style="text-align: center; margin-top: 30px;">
-                    <a href="${process.env.FRONTEND_URL}/admin" 
-                       style="display: inline-block; background-color: #1f2937; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
+                    <a href="${process.env.FRONTEND_URL}/admin" style="display: inline-block; background-color: #1f2937; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
                       View in Admin Panel
                     </a>
                   </div>
                 </td>
               </tr>
-
             </table>
           </td>
         </tr>
@@ -381,45 +353,31 @@ function getVipSignupNotificationHTML({ email, firstName, source }) {
         <tr>
           <td align="center">
             <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 8px; overflow: hidden;">
-
               <tr>
                 <td style="background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%); padding: 20px; text-align: center;">
                   <h1 style="margin: 0; color: white; font-size: 24px;">⭐ NEW VIP SUBSCRIBER!</h1>
                 </td>
               </tr>
-
               <tr>
                 <td style="padding: 30px;">
                   <div style="background-color: #fdf4ff; border-left: 4px solid #ec4899; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                    <p style="margin: 0 0 8px 0; color: #6b21a8; font-weight: bold; font-size: 16px;">
-                      Someone just joined the VIP list! 🎀
-                    </p>
-                    <p style="margin: 0 0 6px 0; color: #6b21a8;">
-                      <strong>Email:</strong> ${email}
-                    </p>
+                    <p style="margin: 0 0 8px 0; color: #6b21a8; font-weight: bold; font-size: 16px;">Someone just joined the VIP list! 🎀</p>
+                    <p style="margin: 0 0 6px 0; color: #6b21a8;"><strong>Email:</strong> ${email}</p>
                     ${firstName ? `<p style="margin: 0 0 6px 0; color: #6b21a8;"><strong>First Name:</strong> ${firstName}</p>` : ""}
-                    <p style="margin: 0; color: #6b21a8;">
-                      <strong>Source:</strong> ${source}
-                    </p>
+                    <p style="margin: 0; color: #6b21a8;"><strong>Source:</strong> ${source}</p>
                   </div>
-
                   <div style="text-align: center; margin-top: 24px;">
-                    <a href="${process.env.FRONTEND_URL}/admin"
-                       style="display: inline-block; background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%); color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
+                    <a href="${process.env.FRONTEND_URL}/admin" style="display: inline-block; background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%); color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
                       View in Admin Panel
                     </a>
                   </div>
                 </td>
               </tr>
-
               <tr>
                 <td style="background-color: #f9fafb; padding: 16px; text-align: center; border-top: 1px solid #e5e7eb;">
-                  <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                    © ${new Date().getFullYear()} Sparkle & Twirl Bows
-                  </p>
+                  <p style="margin: 0; color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} Sparkle & Twirl Bows</p>
                 </td>
               </tr>
-
             </table>
           </td>
         </tr>
@@ -454,44 +412,29 @@ function getTrackingEmailHTML(order) {
         <tr>
           <td align="center">
             <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-              
               <tr>
                 <td style="background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%); padding: 40px 30px; text-align: center;">
                   <div style="font-size: 64px; margin-bottom: 12px;">🚚</div>
-                  <h1 style="margin: 0; color: white; font-size: 32px; font-weight: bold;">
-                    Your Order Has Shipped!
-                  </h1>
+                  <h1 style="margin: 0; color: white; font-size: 32px; font-weight: bold;">Your Order Has Shipped!</h1>
                 </td>
               </tr>
-
               <tr>
                 <td style="padding: 40px 30px; text-align: center;">
                   <p style="margin: 0 0 24px 0; color: #1f2937; font-size: 18px;">
                     Hi ${order.customerName.split(" ")[0]}, your sparkly bows are on their way! ✨
                   </p>
-                  
                   <div style="background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Order Number</p>
                     <p style="margin: 0 0 20px 0; color: #1f2937; font-size: 20px; font-weight: bold; font-family: monospace;">
                       #${order._id.toString().slice(-8).toUpperCase()}
                     </p>
                     <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Tracking Number</p>
-                    <p style="margin: 0; color: #3b82f6; font-size: 24px; font-weight: bold; font-family: monospace;">
-                      ${order.trackingNumber}
-                    </p>
+                    <p style="margin: 0; color: #3b82f6; font-size: 24px; font-weight: bold; font-family: monospace;">${order.trackingNumber}</p>
                   </div>
-
-                  ${
-                    trackingURL
-                      ? `
-                  <a href="${trackingURL}" 
-                     style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 24px; font-weight: bold; font-size: 16px; margin-bottom: 24px;">
+                  ${trackingURL ? `
+                  <a href="${trackingURL}" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 24px; font-weight: bold; font-size: 16px; margin-bottom: 24px;">
                     Track Your Package →
-                  </a>
-                  `
-                      : ""
-                  }
-
+                  </a>` : ""}
                   <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; text-align: left; margin-top: 24px;">
                     <h3 style="margin: 0 0 12px 0; color: #1f2937;">Shipping Details:</h3>
                     <p style="margin: 0; color: #6b7280; line-height: 1.6;">
@@ -505,18 +448,12 @@ function getTrackingEmailHTML(order) {
                   </div>
                 </td>
               </tr>
-
               <tr>
                 <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                  <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">
-                    Questions about your order?
-                  </p>
-                  <p style="margin: 0; color: #ec4899; font-weight: bold;">
-                    Reply to this email: ${process.env.GMAIL_USER}
-                  </p>
+                  <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Questions about your order?</p>
+                  <p style="margin: 0; color: #ec4899; font-weight: bold;">Reply to this email: ${process.env.GMAIL_USER}</p>
                 </td>
               </tr>
-
             </table>
           </td>
         </tr>
@@ -531,25 +468,16 @@ function getTrackingEmailHTML(order) {
 // -------------------------
 async function sendOrderConfirmationEmail(order) {
   try {
-    const mailOptions = {
+    await createTransporter().sendMail({
       from: `"Sparkle & Twirl Bows 🎀" <${process.env.GMAIL_USER}>`,
       to: order.customerEmail,
       subject: `Order Confirmed! 🎀 #${order._id.toString().slice(-8).toUpperCase()}`,
       html: getOrderConfirmationHTML(order),
-    };
-
-    await transporter.sendMail(mailOptions);
-    logger.info("Order confirmation email sent", {
-      orderId: order._id,
-      email: order.customerEmail,
     });
-
+    logger.info("Order confirmation email sent", { orderId: order._id, email: order.customerEmail });
     return { success: true };
   } catch (err) {
-    logger.error("Failed to send order confirmation email", {
-      orderId: order._id,
-      error: err.message,
-    });
+    logger.error("Failed to send order confirmation email", { orderId: order._id, error: err.message });
     return { success: false, error: err.message };
   }
 }
@@ -559,25 +487,16 @@ async function sendOrderConfirmationEmail(order) {
 // -------------------------
 async function sendOwnerNotification(order) {
   try {
-    const mailOptions = {
+    await createTransporter().sendMail({
       from: `"Bow Shop Notification" <${process.env.GMAIL_USER}>`,
       to: process.env.OWNER_EMAIL || process.env.GMAIL_USER,
       subject: `🎉 NEW ORDER #${order._id.toString().slice(-8).toUpperCase()} - $${order.total.toFixed(2)}`,
       html: getOwnerNotificationHTML(order),
-    };
-
-    await transporter.sendMail(mailOptions);
-    logger.info("Owner notification email sent", {
-      orderId: order._id,
-      total: order.total,
     });
-
+    logger.info("Owner notification email sent", { orderId: order._id, total: order.total });
     return { success: true };
   } catch (err) {
-    logger.error("Failed to send owner notification email", {
-      orderId: order._id,
-      error: err.message,
-    });
+    logger.error("Failed to send owner notification email", { orderId: order._id, error: err.message });
     return { success: false, error: err.message };
   }
 }
@@ -587,16 +506,13 @@ async function sendOwnerNotification(order) {
 // -------------------------
 async function sendVipSignupNotification({ email, firstName, source }) {
   try {
-    const mailOptions = {
+    await createTransporter().sendMail({
       from: `"Bow Shop Notification" <${process.env.GMAIL_USER}>`,
       to: process.env.OWNER_EMAIL || process.env.GMAIL_USER,
       subject: `⭐ New VIP Subscriber: ${email}`,
       html: getVipSignupNotificationHTML({ email, firstName, source }),
-    };
-
-    await transporter.sendMail(mailOptions);
+    });
     logger.info("VIP signup notification sent", { email });
-
     return { success: true };
   } catch (err) {
     logger.error("Failed to send VIP signup notification", { error: err.message });
@@ -609,25 +525,16 @@ async function sendVipSignupNotification({ email, firstName, source }) {
 // -------------------------
 async function sendTrackingEmail(order) {
   try {
-    const mailOptions = {
+    await createTransporter().sendMail({
       from: `"Sparkle & Twirl Bows 🎀" <${process.env.GMAIL_USER}>`,
       to: order.customerEmail,
       subject: `Your Order Has Shipped! 🚚 #${order._id.toString().slice(-8).toUpperCase()}`,
       html: getTrackingEmailHTML(order),
-    };
-
-    await transporter.sendMail(mailOptions);
-    logger.info("Tracking email sent", {
-      orderId: order._id,
-      trackingNumber: order.trackingNumber,
     });
-
+    logger.info("Tracking email sent", { orderId: order._id, trackingNumber: order.trackingNumber });
     return { success: true };
   } catch (err) {
-    logger.error("Failed to send tracking email", {
-      orderId: order._id,
-      error: err.message,
-    });
+    logger.error("Failed to send tracking email", { orderId: order._id, error: err.message });
     return { success: false, error: err.message };
   }
 }
