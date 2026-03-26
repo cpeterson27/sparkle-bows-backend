@@ -10,8 +10,8 @@ const logger = require("../logger");
 // -------------------------
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  port: 465,       // SSL port
+  secure: true,    // use SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_APP_PASSWORD,
@@ -19,18 +19,14 @@ const transporter = nodemailer.createTransport({
 });
 
 // -------------------------
-// UPDATED: Send Order Emails with Shipping Address & Gift Message
+// Send Order Emails with Shipping Address & Gift Message
 // -------------------------
 async function sendOrderEmails(order) {
   try {
     const itemsText = order.items
-      .map(
-        (i) =>
-          `${i.name} x${i.quantity} - $${(i.price * i.quantity).toFixed(2)}`
-      )
+      .map(i => `${i.name} x${i.quantity} - $${(i.price * i.quantity).toFixed(2)}`)
       .join("\n");
 
-    // Build shipping address text (NEW FORMAT)
     const shippingText = order.shippingAddress?.line1
       ? `
         <p><strong>Shipping Address:</strong><br/>
@@ -43,7 +39,6 @@ async function sendOrderEmails(order) {
       `
       : "";
 
-    // Build gift message section
     const giftSection = order.isGift
       ? `
         <div style="background: #fff0f5; border: 2px solid #ff69b4; border-radius: 8px; padding: 16px; margin: 16px 0;">
@@ -53,6 +48,7 @@ async function sendOrderEmails(order) {
       `
       : "";
 
+    // Customer Email
     const customerEmail = {
       from: `"Sparkle & Twirl Bows" <${process.env.EMAIL_USER}>`,
       to: order.customerEmail,
@@ -69,6 +65,7 @@ async function sendOrderEmails(order) {
       `,
     };
 
+    // Owner/Admin Email
     const ownerEmail = {
       from: `"Bow Shop Notification" <${process.env.EMAIL_USER}>`,
       to: process.env.OWNER_EMAIL || process.env.EMAIL_USER,
@@ -100,16 +97,12 @@ async function sendOrderEmails(order) {
 exports.createOrderFromStripe = async (paymentIntent, metadata) => {
   try {
     const { userId, customerName, customerEmail, shippingAddress, isGift } = metadata;
-
-    // Parse shipping address (if sent as JSON string in metadata)
     const shipping = shippingAddress ? JSON.parse(shippingAddress) : {};
 
-    // Get cart items
     let cart;
     if (userId && userId !== "null") {
       cart = await Cart.findOne({ userId }).populate("items.productId");
     } else {
-      // Guest cart
       logger.warn("Guest cart not fully implemented yet");
       return null;
     }
@@ -119,7 +112,6 @@ exports.createOrderFromStripe = async (paymentIntent, metadata) => {
       return null;
     }
 
-    // Build order items and calculate totals
     const items = [];
     let subtotal = 0;
 
@@ -137,22 +129,20 @@ exports.createOrderFromStripe = async (paymentIntent, metadata) => {
 
       subtotal += product.price * item.quantity;
 
-      // Update inventory
       await Product.findByIdAndUpdate(product._id, {
         $inc: { inventory: -item.quantity, sales: item.quantity },
       });
     }
 
-    // Create order
     const order = await Order.create({
       userId: userId && userId !== "null" ? userId : null,
       customerName,
       customerEmail,
       items,
       subtotal,
-      shippingCost: 0, // Calculate based on your logic
+      shippingCost: 0,
       tax: 0,
-      total: paymentIntent.amount / 100, // Stripe amount is in cents
+      total: paymentIntent.amount / 100,
       status: "processing",
       shippingAddress: shipping,
       isGift: isGift === "true",
@@ -161,15 +151,11 @@ exports.createOrderFromStripe = async (paymentIntent, metadata) => {
       stripeChargeId: paymentIntent.charges?.data[0]?.id,
     });
 
-    // Clear cart
     if (userId && userId !== "null") {
       await Cart.findOneAndUpdate({ userId }, { items: [] });
     }
 
-    // Populate and send emails
-    const populatedOrder = await Order.findById(order._id).populate(
-      "items.productId"
-    );
+    const populatedOrder = await Order.findById(order._id).populate("items.productId");
     await sendOrderEmails(populatedOrder);
 
     logger.info("Order created from Stripe webhook", { orderId: order._id });
@@ -192,17 +178,11 @@ exports.getOrder = async (req, res) => {
     if (isObjectId) {
       order = await Order.findById(orderId).populate("items.productId");
     } else {
-      // Try by PaymentIntent ID
-      order = await Order.findOne({ stripePaymentIntentId: orderId }).populate(
-        "items.productId"
-      );
+      order = await Order.findOne({ stripePaymentIntentId: orderId }).populate("items.productId");
     }
 
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
-    }
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
-    // Check permissions
     const isOwner = req.user?.userId && order.userId?.toString() === req.user.userId;
     const isAdmin = req.user?.role === "admin";
     const isPublicRoute = req.path.includes("/public/");
@@ -240,9 +220,7 @@ exports.updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
     const valid = ["processing", "shipped", "delivered", "cancelled"];
-    if (!valid.includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
+    if (!valid.includes(status)) return res.status(400).json({ error: "Invalid status" });
 
     const order = await Order.findByIdAndUpdate(
       req.params.orderId,
@@ -250,9 +228,7 @@ exports.updateOrderStatus = async (req, res) => {
       { new: true }
     ).populate("items.productId");
 
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
-    }
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
     res.json(order);
   } catch (err) {
@@ -278,7 +254,7 @@ exports.getAllOrders = async (req, res) => {
 };
 
 // -------------------------
-// Export sendOrderEmails for use in other files
+// Export
 // -------------------------
 module.exports = {
   createOrderFromStripe: exports.createOrderFromStripe,
@@ -286,5 +262,5 @@ module.exports = {
   getUserOrders: exports.getUserOrders,
   updateOrderStatus: exports.updateOrderStatus,
   getAllOrders: exports.getAllOrders,
-  sendOrderEmails, // Export for use in routes/orders.js
+  sendOrderEmails,
 };

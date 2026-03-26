@@ -1,6 +1,6 @@
 const express = require("express");
 const Lead = require("../models/Lead");
-const { sendVipSignupNotification } = require("../services/emailService");
+const { sendVipNotification } = require("../services/emailService");
 const logger = require("../logger");
 
 const router = express.Router();
@@ -27,15 +27,8 @@ async function sendToKlaviyo(email, firstName = "", source = "website") {
         data: {
           type: "event",
           attributes: {
-            metric: {
-              data: { type: "metric", attributes: { name: "VIP Signup" } },
-            },
-            profile: {
-              data: {
-                type: "profile",
-                attributes: { email, first_name: firstName },
-              },
-            },
+            metric: { data: { type: "metric", attributes: { name: "VIP Signup" } } },
+            profile: { data: { type: "profile", attributes: { email, first_name: firstName } } },
             properties: { source },
           },
         },
@@ -44,11 +37,7 @@ async function sendToKlaviyo(email, firstName = "", source = "website") {
 
     if (!res.ok) {
       const text = await res.text();
-      logger.error("Klaviyo event failed", {
-        status: res.status,
-        body: text,
-        email,
-      });
+      logger.error("Klaviyo event failed", { status: res.status, body: text, email });
     } else {
       logger.info("Klaviyo event sent", { email });
     }
@@ -70,6 +59,9 @@ router.post("/", async (req, res) => {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
+    // -------------------------
+    // 1️⃣ Find or create lead
+    // -------------------------
     let lead = await Lead.findOne({ email: normalizedEmail });
 
     if (!lead) {
@@ -77,17 +69,20 @@ router.post("/", async (req, res) => {
         email: normalizedEmail,
         firstName,
         source,
-        vipSubscribed: false, // start as false, mark true after Klaviyo
+        vipSubscribed: false,
       });
     }
 
-    // ✅ Respond immediately
+    // -------------------------
+    // 2️⃣ Respond immediately
+    // -------------------------
     res.status(201).json({ message: "Lead captured", lead });
 
-    // ✅ Send Klaviyo event async
+    // -------------------------
+    // 3️⃣ Async: Send Klaviyo event
+    // -------------------------
     sendToKlaviyo(normalizedEmail, firstName, source)
       .then(async () => {
-        // Mark vipSubscribed if Klaviyo succeeded
         lead.vipSubscribed = true;
         await lead.save();
         logger.info("Lead vipSubscribed updated", { email: normalizedEmail });
@@ -99,30 +94,22 @@ router.post("/", async (req, res) => {
         });
       });
 
-    // ✅ Send owner notification SYNC - blocks response for testing/debug
-    logger.info("🔄 Sending VIP notification SYNC...", {
-      email: normalizedEmail,
-    });
-    const result = await sendVipSignupNotification({
-      email: normalizedEmail,
-      firstName,
-      source,
-    });
-    if (result.success) {
-      logger.info("✅ VIP owner notification sent SYNC", {
-        email: normalizedEmail,
-      });
-    } else {
-      logger.error("❌ VIP owner notification FAILED", {
-        email: normalizedEmail,
-        error: result.error,
-      });
-    }
+    // -------------------------
+    // 4️⃣ Async: Send VIP owner notification
+    // -------------------------
+    (async () => {
+      try {
+        await sendVipNotification({ email: normalizedEmail, firstName, source });
+        logger.info("VIP owner notification sent", { email: normalizedEmail });
+      } catch (err) {
+        logger.error("Failed to send VIP owner notification", {
+          email: normalizedEmail,
+          error: err.message,
+        });
+      }
+    })();
   } catch (err) {
-    logger.error("Lead route error", {
-      error: err.message,
-      email: normalizedEmail,
-    });
+    logger.error("Lead route error", { error: err.message, email: normalizedEmail });
     if (!res.headersSent) {
       res.status(500).json({ error: "Server error" });
     }
@@ -146,32 +133,30 @@ router.get("/status", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// 🧪 POST /api/leads/test-email - SMTP TEST (SYNC)
+// 🧪 POST /api/leads/test-email - SMTP TEST
 // ─────────────────────────────────────────────
 router.post("/test-email", async (req, res) => {
-  const { email = process.env.GMAIL_USER || process.env.OWNER_EMAIL } =
-    req.body;
+  const { email = process.env.GMAIL_USER || process.env.OWNER_EMAIL } = req.body;
 
   if (!email) {
-    return res.status(400).json({ error: "Email required" });
+    return res.status(400).json({ error: "Email is required" });
   }
 
   try {
-    const { sendVipSignupNotification } = require("../services/emailService");
-    const result = await sendVipSignupNotification({
+    const result = await sendVipNotification({
       email,
       firstName: "Test",
       source: "test-endpoint",
     });
 
     if (result.success) {
-      res.json({ success: true, message: "Test email sent successfully!" });
+      return res.json({ success: true, message: "Test email sent successfully!" });
     } else {
-      res.status(500).json({ success: false, error: result.error });
+      return res.status(500).json({ success: false, error: result.error });
     }
   } catch (err) {
     logger.error("Test email endpoint error", { error: err.message });
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

@@ -1,3 +1,13 @@
+process.on("uncaughtException", (err) => {
+  console.error("🚨 Uncaught Exception:", err);
+  process.exit(1); // exit after logging
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("🚨 Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+
 require("dotenv").config();
 const fs = require("fs");
 const http = require("http");
@@ -90,12 +100,16 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // ------------------------
 // START SERVER
 // ------------------------
-server.listen(PORT, () => {
-  const protocol = NODE_ENV === "production" ? "https" : "http";
-  logger.info(`🚀 Server running on ${protocol}://localhost:${PORT}`);
-  logger.info(`📡 WebSocket server running on ws://localhost:${PORT}/ws`);
-  logger.info(`🌍 Environment: ${NODE_ENV}`);
-});
+try {
+  server.listen(PORT, () => {
+    const protocol = NODE_ENV === "production" ? "https" : "http";
+    logger.info(`🚀 Server running on ${protocol}://localhost:${PORT}`);
+    logger.info(`📡 WebSocket server running on ws://localhost:${PORT}/ws`);
+    logger.info(`🌍 Environment: ${NODE_ENV}`);
+  });
+} catch (err) {
+  console.error("🚨 Server startup failed:", err);
+}
 
 // ------------------------
 // GLOBAL PROCESS ERROR HANDLING
