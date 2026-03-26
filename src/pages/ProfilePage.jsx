@@ -18,7 +18,7 @@ import {
   ChevronRight,
   LogOut,
   Trash2,
-  Camera,
+  Camera, 
   Lock,
   Check,
   Sparkles,

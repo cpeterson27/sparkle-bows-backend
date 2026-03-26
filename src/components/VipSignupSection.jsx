@@ -1,44 +1,51 @@
 import React, { useState, useEffect } from "react";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { createLead } from "../api/leads";
+import { CheckCircle2 } from "lucide-react";
+import { createLead, getVipStatus } from "../api/leads";
 
-// ✅ Handles VIP signup with consent compliance
+// ✅ VIP signup using logged-in user info — BUTTON ONLY
 export default function VipSignupSection({ user }) {
-  const [form, setForm] = useState({ firstName: "", email: "", source: "homepage" });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [showSection, setShowSection] = useState(true);
 
-  // ✅ Hide VIP section for logged-in subscribed users
+  // ✅ Hide section if user is already VIP
   useEffect(() => {
-    if (user?.vipSubscribed) {
-      setShowSection(false);
-    }
+    const checkVip = async () => {
+      if (!user?.email) return;
+      try {
+        const status = await getVipStatus(user.email);
+        if (status.vipSubscribed) setShowSection(false);
+      } catch (err) {
+        console.error("VIP status check failed", err);
+      }
+    };
+    checkVip();
   }, [user]);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  if (!showSection || !user) return null; // Nothing to show
+
+  const handleVipClick = async () => {
     setSaving(true);
     setError("");
 
     try {
-      // ✅ Ensure consent is tracked in backend/klaviyo
-      await createLead(form);
+      await createLead({
+        firstName: user.firstName || "",
+        email: user.email,
+        source: "homepage",
+      });
+
       setSuccess(true);
-      setForm({ firstName: "", email: "", source: "homepage" });
-      setShowSection(false); // Hide section after successful subscription
-    } catch (submissionError) {
+      setShowSection(false); // optional: hide after success
+    } catch (err) {
       setError(
-        submissionError.response?.data?.error ||
-          "We could not save your email right now. Please try again."
+        err.response?.data?.error || "Unable to join VIP list right now. Please try again."
       );
     } finally {
       setSaving(false);
     }
   };
-
-  if (!showSection) return null; // ✅ Hide for subscribed users
 
   return (
     <section className="border-y border-slate-200 bg-slate-950 text-white">
@@ -49,8 +56,7 @@ export default function VipSignupSection({ user }) {
           </p>
           <h2 className="mt-4 font-serif text-4xl">Be the first to know.</h2>
           <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300">
-            New collections, limited restocks, and exclusive offers — straight
-            to your inbox. No spam, ever.
+            New collections, limited restocks, and exclusive offers — straight to your inbox. No spam, ever.
           </p>
           <div className="mt-6 space-y-3 text-sm text-slate-300">
             <p>✦ Early access to new arrivals</p>
@@ -59,14 +65,7 @@ export default function VipSignupSection({ user }) {
           </div>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-[32px] border border-slate-800 bg-white p-7 text-slate-950 shadow-xl"
-        >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
-            Join the list
-          </p>
-
+        <div className="rounded-[32px] border border-slate-800 bg-white p-7 text-slate-950 shadow-xl flex flex-col items-center justify-center">
           {success ? (
             <div className="mt-6 flex flex-col items-center gap-3 py-6 text-center">
               <CheckCircle2 className="h-10 w-10 text-emerald-500" />
@@ -77,51 +76,22 @@ export default function VipSignupSection({ user }) {
             </div>
           ) : (
             <>
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <input
-                  type="text"
-                  value={form.firstName}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, firstName: event.target.value }))
-                  }
-                  placeholder="First name"
-                  autoComplete="given-name"
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-rose-300 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                />
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, email: event.target.value }))
-                  }
-                  placeholder="Email address"
-                  autoComplete="email"
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-rose-300 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                />
-              </div>
-
               {error && (
-                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
+                <p className="mb-4 text-sm text-red-600 text-center">{error}</p>
               )}
-
               <button
-                type="submit"
+                onClick={handleVipClick}
                 disabled={saving}
-                className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
               >
-                {saving ? "Saving..." : "Join the list"}
-                <ArrowRight className="h-4 w-4" />
+                {saving ? "Joining..." : "Join the VIP list"}
               </button>
-
-              <p className="mt-4 text-xs text-slate-400">
+              <p className="mt-4 text-xs text-slate-400 text-center">
                 No spam. Unsubscribe any time.
               </p>
             </>
           )}
-        </form>
+        </div>
       </div>
     </section>
   );
