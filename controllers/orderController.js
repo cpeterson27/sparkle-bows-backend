@@ -13,8 +13,8 @@ const transporter = nodemailer.createTransport({
   port: 465,       // SSL port
   secure: true,    // use SSL
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD,
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
   },
 });
 
@@ -50,7 +50,7 @@ async function sendOrderEmails(order) {
 
     // Customer Email
     const customerEmail = {
-      from: `"Sparkle & Twirl Bows" <${process.env.EMAIL_USER}>`,
+      from: `"Sparkle & Twirl Bows" <${process.env.GMAIL_USER}>`,
       to: order.customerEmail,
       subject: `Order Confirmation #${order._id.toString().slice(-8)}`,
       html: `
@@ -67,8 +67,8 @@ async function sendOrderEmails(order) {
 
     // Owner/Admin Email
     const ownerEmail = {
-      from: `"Bow Shop Notification" <${process.env.EMAIL_USER}>`,
-      to: process.env.OWNER_EMAIL || process.env.EMAIL_USER,
+      from: `"Bow Shop Notification" <${process.env.GMAIL_USER}>`,
+      to: process.env.OWNER_EMAIL || process.env.GMAIL_USER,
       subject: `NEW ORDER #${order._id.toString().slice(-8)}`,
       html: `
         <h1>New Order Received 🎉</h1>
