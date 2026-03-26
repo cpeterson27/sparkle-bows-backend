@@ -125,7 +125,7 @@ router.post("/", async (req, res) => {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    // Find or create lead
+    // 1️⃣ Find or create lead
     let lead = await Lead.findOne({ email: normalizedEmail });
     if (!lead) {
       lead = await Lead.create({
@@ -136,12 +136,10 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Respond immediately to client
+    // 2️⃣ Respond immediately
     res.status(201).json({ message: "Lead captured", lead });
 
-    // ────────────────
-    // Async tasks: run in parallel safely
-    // ────────────────
+    // 3️⃣ Async tasks: list add, event, owner + subscriber emails
     (async () => {
       try {
         const listAddPromise = lead.vipSubscribed
@@ -150,44 +148,58 @@ router.post("/", async (req, res) => {
 
         const eventPromise = sendKlaviyoEvent(normalizedEmail, firstName || lead.firstName, source);
 
-        // Run both promises concurrently
         const results = await Promise.allSettled([listAddPromise, eventPromise]);
 
-        // Update vipSubscribed only if list add succeeded
-        const listAddResult = results[0];
-        if (listAddResult.status === "fulfilled" && listAddResult.value && !lead.vipSubscribed) {
+        // Update vipSubscribed if list add succeeded
+        if (results[0].status === "fulfilled" && results[0].value && !lead.vipSubscribed) {
           lead.vipSubscribed = true;
           await lead.save();
           logger.info("Lead vipSubscribed updated", { email: lead.email });
         }
 
-        // 1️⃣ Send VIP owner notification
+        // 4️⃣ Send owner notification
         try {
           await sendVipNotification({
             email: process.env.OWNER_EMAIL || "sparklebowshop@gmail.com",
-            firstName: firstName || lead.firstName,
+            firstName: firstName || lead.firstName || "",
             source,
-            subject: `⭐ New VIP Subscriber: ${lead.email}`,
+            subject: `⭐ New VIP Subscriber: ${normalizedEmail}`,
+            html: `
+              <p>Someone just joined the VIP list! 🎀</p>
+              <p><strong>Email:</strong> ${normalizedEmail}</p>
+              <p><strong>Name:</strong> ${firstName || lead.firstName || ""}</p>
+              <p><strong>Source:</strong> ${source}</p>
+              <p><a href="https://www.sparklebows.shop/admin">View in Admin Panel</a></p>
+            `,
           });
-          logger.info("VIP owner notification sent", { email: lead.email });
+          logger.info("VIP owner notification sent", { email: normalizedEmail });
         } catch (err) {
-          logger.error("Failed to send VIP owner notification", { error: err.message, email: lead.email });
+          logger.error("Failed to send VIP owner notification", { error: err.message, email: normalizedEmail });
         }
 
-        // 2️⃣ Send welcome email to subscriber
+        // 5️⃣ Send subscriber welcome email
         try {
           await sendVipNotification({
-            email: lead.email,
-            firstName: lead.firstName,
+            email: normalizedEmail,  // THIS GOES TO THE PERSON WHO SIGNED UP
+            firstName: firstName || lead.firstName || "",
             source,
-            subject: "🎀 Welcome to the VIP List!",
-            htmlTemplate: "vip-welcome.html", // optional: custom HTML template
+            subject: "🎀 Welcome to the Sparkle Bows VIP List!",
+            html: `
+              <p>Hi ${firstName || lead.firstName || ""},</p>
+              <p>Welcome to the Sparkle Bows VIP list! Be the first to know about:</p>
+              <ul>
+                <li>Early access to new arrivals</li>
+                <li>Restock alerts on fan favorites</li>
+                <li>Exclusive discounts for subscribers</li>
+              </ul>
+              <p>No spam, ever. You can unsubscribe any time.</p>
+              <p>✨ Thanks for joining,<br/>Sparkle & Twirl Bows</p>
+            `,
           });
-          logger.info("VIP welcome email sent to subscriber", { email: lead.email });
+          logger.info("VIP welcome email sent to subscriber", { email: normalizedEmail });
         } catch (err) {
-          logger.error("Failed to send VIP welcome email to subscriber", { error: err.message, email: lead.email });
+          logger.error("Failed to send VIP welcome email", { email: normalizedEmail, error: err.message });
         }
-
       } catch (err) {
         logger.error("Async lead post tasks failed", { error: err.message, email: normalizedEmail });
       }
@@ -215,7 +227,7 @@ router.get("/status", async (req, res) => {
 });
 
 // ────────────────────────────────
-// POST /api/leads/test-email
+// POST /api/leads/test-email - SMTP Test
 // ────────────────────────────────
 router.post("/test-email", async (req, res) => {
   const { email = process.env.GMAIL_USER || process.env.OWNER_EMAIL } = req.body;
@@ -226,6 +238,8 @@ router.post("/test-email", async (req, res) => {
       email,
       firstName: "Test",
       source: "test-endpoint",
+      subject: "VIP Test Email",
+      html: "<p>This is a test VIP email.</p>",
     });
 
     if (result.success) {
