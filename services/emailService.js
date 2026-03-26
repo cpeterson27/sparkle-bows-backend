@@ -1,3 +1,4 @@
+// services/emailService.js
 const { Resend } = require("resend");
 const logger = require("../logger");
 
@@ -41,7 +42,7 @@ async function sendEmail({ to, subject, html, from }) {
 }
 
 // -------------------------
-// ORDER CONFIRMATION HTML
+// ORDER EMAIL HTML
 // -------------------------
 function getOrderConfirmationHTML(order) {
   const itemsHTML = order.items
@@ -140,48 +141,7 @@ function getOrderConfirmationHTML(order) {
 }
 
 // -------------------------
-// OWNER NOTIFICATION HTML
-// -------------------------
-function getOwnerNotificationHTML(order) {
-  const itemsList = order.items
-    .map((i) => `• ${i.name} x${i.quantity} - ${formatCurrency(i.price * i.quantity)}`)
-    .join("\n");
-
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>New Order</title></head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f3f4f6;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:20px;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background-color:white;border-radius:8px;overflow:hidden;">
-        <tr><td style="background-color:#1f2937;padding:20px;text-align:center;"><h1 style="margin:0;color:white;font-size:24px;">🎉 NEW ORDER!</h1></td></tr>
-        <tr><td style="padding:30px;">
-          <p><strong>Customer:</strong> ${order.customerName}</p>
-          <p><strong>Email:</strong> ${order.customerEmail}</p>
-          <pre style="background-color:#f9fafb;padding:16px;border-radius:4px;font-family:monospace;font-size:14px;">${itemsList}</pre>
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
-            <tr><td style="padding:8px 0;color:#6b7280;">Subtotal:</td><td style="padding:8px 0;text-align:right;font-weight:bold;">${formatCurrency(order.subtotal)}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">Shipping:</td><td style="padding:8px 0;text-align:right;font-weight:bold;">${formatCurrency(order.shippingCost)}</td></tr>
-            ${order.tax > 0 ? `<tr><td style="padding:8px 0;color:#6b7280;">Tax:</td><td style="padding:8px 0;text-align:right;font-weight:bold;">${formatCurrency(order.tax)}</td></tr>` : ""}
-            <tr style="border-top:2px solid #e5e7eb;">
-              <td style="padding:12px 0 0 0;font-size:18px;font-weight:bold;">TOTAL:</td>
-              <td style="padding:12px 0 0 0;text-align:right;font-size:20px;font-weight:bold;color:#10b981;">${formatCurrency(order.total)}</td>
-            </tr>
-          </table>
-          <div style="text-align:center;margin-top:30px;">
-            <a href="${process.env.FRONTEND_URL}/admin" style="display:inline-block;background-color:#1f2937;color:white;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:bold;">View in Admin Panel</a>
-          </div>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
-}
-
-// -------------------------
-// VIP LEAD HTML
+// VIP EMAIL HTML
 // -------------------------
 function getVipLeadHTML(lead) {
   return `
@@ -229,15 +189,15 @@ async function sendOwnerNotification(order) {
   return sendEmail({
     to: process.env.OWNER_EMAIL || "sparklebowshop@gmail.com",
     subject: `🎉 NEW ORDER #${order._id.toString().slice(-8).toUpperCase()} - ${formatCurrency(order.total)}`,
-    html: getOwnerNotificationHTML(order),
+    html: getOrderConfirmationHTML(order),
   });
 }
 
-async function sendVipNotification(lead) {
+async function sendVipNotification({ to, email, firstName = "", source = "website" }) {
   return sendEmail({
-    to: process.env.OWNER_EMAIL || "sparklebowshop@gmail.com",
-    subject: `⭐ New VIP Subscriber: ${lead.email}`,
-    html: getVipLeadHTML(lead),
+    to,
+    subject: `⭐ New VIP Subscriber: ${email}`,
+    html: getVipLeadHTML({ email, firstName, source }),
   });
 }
 
@@ -252,6 +212,5 @@ module.exports = {
   formatCurrency,
   formatDate,
   getOrderConfirmationHTML,
-  getOwnerNotificationHTML,
   getVipLeadHTML,
 };

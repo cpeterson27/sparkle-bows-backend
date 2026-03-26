@@ -1,4 +1,3 @@
-// routes/leads.js
 const express = require("express");
 const Lead = require("../models/Lead");
 const { sendVipNotification } = require("../services/emailService");
