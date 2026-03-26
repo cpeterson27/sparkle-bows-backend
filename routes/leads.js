@@ -136,7 +136,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Respond immediately
+    // Respond immediately to client
     res.status(201).json({ message: "Lead captured", lead });
 
     // ────────────────
@@ -150,7 +150,7 @@ router.post("/", async (req, res) => {
 
         const eventPromise = sendKlaviyoEvent(normalizedEmail, firstName || lead.firstName, source);
 
-        // Run both promises and wait for all to settle
+        // Run both promises concurrently
         const results = await Promise.allSettled([listAddPromise, eventPromise]);
 
         // Update vipSubscribed only if list add succeeded
@@ -161,13 +161,33 @@ router.post("/", async (req, res) => {
           logger.info("Lead vipSubscribed updated", { email: lead.email });
         }
 
-        // Send VIP owner notification regardless of list/event outcome
+        // 1️⃣ Send VIP owner notification
         try {
-          await sendVipNotification({ email: normalizedEmail, firstName, source });
-          logger.info("VIP owner notification sent", { email: normalizedEmail });
+          await sendVipNotification({
+            email: process.env.OWNER_EMAIL || "sparklebowshop@gmail.com",
+            firstName: firstName || lead.firstName,
+            source,
+            subject: `⭐ New VIP Subscriber: ${lead.email}`,
+          });
+          logger.info("VIP owner notification sent", { email: lead.email });
         } catch (err) {
-          logger.error("Failed to send VIP owner notification", { error: err.message, email: normalizedEmail });
+          logger.error("Failed to send VIP owner notification", { error: err.message, email: lead.email });
         }
+
+        // 2️⃣ Send welcome email to subscriber
+        try {
+          await sendVipNotification({
+            email: lead.email,
+            firstName: lead.firstName,
+            source,
+            subject: "🎀 Welcome to the VIP List!",
+            htmlTemplate: "vip-welcome.html", // optional: custom HTML template
+          });
+          logger.info("VIP welcome email sent to subscriber", { email: lead.email });
+        } catch (err) {
+          logger.error("Failed to send VIP welcome email to subscriber", { error: err.message, email: lead.email });
+        }
+
       } catch (err) {
         logger.error("Async lead post tasks failed", { error: err.message, email: normalizedEmail });
       }
@@ -195,7 +215,7 @@ router.get("/status", async (req, res) => {
 });
 
 // ────────────────────────────────
-// POST /api/leads/test-email - SMTP Test
+// POST /api/leads/test-email
 // ────────────────────────────────
 router.post("/test-email", async (req, res) => {
   const { email = process.env.GMAIL_USER || process.env.OWNER_EMAIL } = req.body;
