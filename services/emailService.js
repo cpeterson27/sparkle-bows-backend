@@ -246,15 +246,25 @@ function getVipLeadHTML(lead) {
 // -------------------------
 async function sendEmail({ to, subject, html }) {
   try {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"Sparkle & Twirl Bows 🎀" <${process.env.GMAIL_USER}>`,
       to,
       subject,
       html,
     });
+
+    console.log("✅ EMAIL SENT:", info);
     logger.info("Email sent", { to, subject });
   } catch (err) {
-    logger.error("Failed to send email", { to, subject, error: err.message });
+    console.error("🚨 FULL EMAIL ERROR:", err); // 👈 THIS IS WHAT YOU NEED
+    logger.error("Failed to send email", {
+      to,
+      subject,
+      message: err.message,
+      code: err.code,
+      response: err.response,
+      stack: err.stack,
+    });
   }
 }
 
