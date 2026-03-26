@@ -45,7 +45,7 @@ async function addToKlaviyoList(email, firstName = "") {
           revision: "2023-12-15",
         },
         body: JSON.stringify(payload),
-      }
+      },
     );
 
     clearTimeout(timeout);
@@ -94,7 +94,10 @@ async function sendKlaviyoEvent(email, firstName = "", source = "website") {
               data: { type: "metric", attributes: { name: "VIP Signup" } },
             },
             profile: {
-              data: { type: "profile", attributes: { email, first_name: firstName } },
+              data: {
+                type: "profile",
+                attributes: { email, first_name: firstName },
+              },
             },
             properties: { source },
           },
@@ -104,7 +107,11 @@ async function sendKlaviyoEvent(email, firstName = "", source = "website") {
 
     if (!res.ok) {
       const text = await res.text();
-      logger.error("Klaviyo event failed", { status: res.status, body: text, email });
+      logger.error("Klaviyo event failed", {
+        status: res.status,
+        body: text,
+        email,
+      });
     } else {
       logger.info("Klaviyo event sent", { email });
     }
@@ -145,12 +152,23 @@ router.post("/", async (req, res) => {
           ? Promise.resolve(false)
           : addToKlaviyoList(lead.email, firstName || lead.firstName);
 
-        const eventPromise = sendKlaviyoEvent(normalizedEmail, firstName || lead.firstName, source);
+        const eventPromise = sendKlaviyoEvent(
+          normalizedEmail,
+          firstName || lead.firstName,
+          source,
+        );
 
-        const results = await Promise.allSettled([listAddPromise, eventPromise]);
+        const results = await Promise.allSettled([
+          listAddPromise,
+          eventPromise,
+        ]);
 
         // Update vipSubscribed if list add succeeded
-        if (results[0].status === "fulfilled" && results[0].value && !lead.vipSubscribed) {
+        if (
+          results[0].status === "fulfilled" &&
+          results[0].value &&
+          !lead.vipSubscribed
+        ) {
           lead.vipSubscribed = true;
           await lead.save();
           logger.info("Lead vipSubscribed updated", { email: lead.email });
@@ -171,40 +189,58 @@ router.post("/", async (req, res) => {
               <p><a href="https://www.sparklebows.shop/admin">View in Admin Panel</a></p>
             `,
           });
-          logger.info("VIP owner notification sent", { email: normalizedEmail });
+          logger.info("VIP owner notification sent", {
+            email: normalizedEmail,
+          });
         } catch (err) {
-          logger.error("Failed to send VIP owner notification", { error: err.message, email: normalizedEmail });
+          logger.error("Failed to send VIP owner notification", {
+            error: err.message,
+            email: normalizedEmail,
+          });
         }
 
         // 5️⃣ Send subscriber welcome email
         try {
           await sendVipNotification({
-            email: normalizedEmail,  // THIS GOES TO THE PERSON WHO SIGNED UP
+            to: normalizedEmail, // THIS GOES TO THE PERSON WHO SIGNED UP
+            email: normalizedEmail,
             firstName: firstName || lead.firstName || "",
             source,
             subject: "🎀 Welcome to the Sparkle Bows VIP List!",
             html: `
+              <h1>🎀 Welcome to VIP!</h1>
               <p>Hi ${firstName || lead.firstName || ""},</p>
-              <p>Welcome to the Sparkle Bows VIP list! Be the first to know about:</p>
+              <p>You're now on the Sparkle Bows VIP list! You'll get:</p>
               <ul>
-                <li>Early access to new arrivals</li>
-                <li>Restock alerts on fan favorites</li>
-                <li>Exclusive discounts for subscribers</li>
+                <li>Early access to new bows</li>
+                <li>Restock notifications</li>
+                <li>Exclusive subscriber discounts</li>
               </ul>
-              <p>No spam, ever. You can unsubscribe any time.</p>
-              <p>✨ Thanks for joining,<br/>Sparkle & Twirl Bows</p>
+              <p>No spam - unsubscribe anytime.</p>
+              <p>✨ Thanks for joining,<br/>Sparkle & Twirl Bows Team</p>
             `,
           });
-          logger.info("VIP welcome email sent to subscriber", { email: normalizedEmail });
+          logger.info("VIP welcome email sent to subscriber", {
+            email: normalizedEmail,
+          });
         } catch (err) {
-          logger.error("Failed to send VIP welcome email", { email: normalizedEmail, error: err.message });
+          logger.error("Failed to send VIP welcome email", {
+            email: normalizedEmail,
+            error: err.message,
+          });
         }
       } catch (err) {
-        logger.error("Async lead post tasks failed", { error: err.message, email: normalizedEmail });
+        logger.error("Async lead post tasks failed", {
+          error: err.message,
+          email: normalizedEmail,
+        });
       }
     })();
   } catch (err) {
-    logger.error("Lead route error", { error: err.message, email: normalizedEmail });
+    logger.error("Lead route error", {
+      error: err.message,
+      email: normalizedEmail,
+    });
     if (!res.headersSent) res.status(500).json({ error: "Server error" });
   }
 });
@@ -226,10 +262,77 @@ router.get("/status", async (req, res) => {
 });
 
 // ────────────────────────────────
+// 🧪 GET /api/leads/klaviyo-status - Check Klaviyo VIP status
+// ────────────────────────────────
+router.get("/klaviyo-status", async (req, res) => {
+  const { email } = req.query;
+  if (!email)
+    return res.status(400).json({ error: "Email query param required" });
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  if (!KLAVIYO_PRIVATE_KEY) {
+    logger.warn("Klaviyo API key missing - cannot check status");
+    return res.json({ vipSubscribed: false });
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    // Query Klaviyo for profile events matching "VIP Signup"
+    const res = await fetch(
+      `https://a.klaviyo.com/api/search-profiles/?query=eq(email,'${normalizedEmail}')`,
+      {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/vnd.api+json",
+          Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}`,
+          revision: "2024-02-15",
+        },
+      },
+    );
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const text = await res.text();
+      logger.error("Klaviyo profile search failed", {
+        status: res.status,
+        email: normalizedEmail,
+      });
+      return res.json({ vipSubscribed: false });
+    }
+
+    const data = await res.json();
+    const profileExists = data.data && data.data.length > 0;
+
+    logger.info("Klaviyo status check", {
+      email: normalizedEmail,
+      vipSubscribed: profileExists,
+    });
+
+    res.json({ vipSubscribed: profileExists });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") {
+      logger.error("Klaviyo status timeout", { email: normalizedEmail });
+    } else {
+      logger.error("Klaviyo status error", {
+        error: err.message,
+        email: normalizedEmail,
+      });
+    }
+    res.json({ vipSubscribed: false });
+  }
+});
+
+// ────────────────────────────────
 // POST /api/leads/test-email - SMTP Test
 // ────────────────────────────────
 router.post("/test-email", async (req, res) => {
-  const { email = process.env.GMAIL_USER || process.env.OWNER_EMAIL } = req.body;
+  const { email = process.env.GMAIL_USER || process.env.OWNER_EMAIL } =
+    req.body;
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
@@ -242,7 +345,10 @@ router.post("/test-email", async (req, res) => {
     });
 
     if (result.success) {
-      return res.json({ success: true, message: "Test email sent successfully!" });
+      return res.json({
+        success: true,
+        message: "Test email sent successfully!",
+      });
     } else {
       return res.status(500).json({ success: false, error: result.error });
     }
