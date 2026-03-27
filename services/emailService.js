@@ -22,7 +22,7 @@ const formatDate = (date) =>
 async function sendEmail({ to, subject, html, from }) {
   try {
     const { data, error } = await resend.emails.send({
-      from: from || "Sparkle Bows <onboarding@resend.dev>",
+      from: from || "Sparkle Bows <hello@sparklebows.shop>",
       to,
       subject,
       html,
