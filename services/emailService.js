@@ -3,6 +3,8 @@ const { Resend } = require("resend");
 const logger = require("../logger");
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const defaultFromEmail =
+  process.env.EMAIL_FROM || "Sparkle Bows <hello@mail.sparklebows.shop>";
 
 // -------------------------
 // HELPERS
@@ -22,7 +24,7 @@ const formatDate = (date) =>
 async function sendEmail({ to, subject, html, from }) {
   try {
     const { data, error } = await resend.emails.send({
-      from: from || "Sparkle Bows <hello@sparklebows.shop>",
+      from: from || defaultFromEmail,
       to,
       subject,
       html,
