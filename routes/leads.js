@@ -262,8 +262,6 @@ router.get("/status", async (req, res) => {
 });
 
 // ────────────────────────────────
-// 🧪 GET /api/leads/klaviyo-status - Check Klaviyo VIP status
-// ────────────────────────────────
 router.get("/klaviyo-status", async (req, res) => {
   const { email } = req.query;
   if (!email)
@@ -280,9 +278,44 @@ router.get("/klaviyo-status", async (req, res) => {
   const timeoutId = setTimeout(() => controller.abort(), 5000);
 
   try {
-    // Query Klaviyo for profile events matching "VIP Signup"
-    const res = await fetch(
+    const profileSearchRes = await fetch(
       `https://a.klaviyo.com/api/search-profiles/?query=eq(email,'${normalizedEmail}')`,
+      {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/vnd.api+json",
+          Authorization: `Klaviyo-API-Key ${KLAVIYO_PRIVATE_KEY}`,
+          revision: "2024-02-15",
+        },
+      },
+    );
+
+    if (!profileSearchRes.ok) {
+      clearTimeout(timeoutId);
+      const text = await profileSearchRes.text();
+      logger.error("Klaviyo profile search failed", {
+        status: profileSearchRes.status,
+        body: text,
+        email: normalizedEmail,
+      });
+      return res.json({ vipSubscribed: false });
+    }
+
+    const profileData = await profileSearchRes.json();
+    const profileId = profileData?.data?.[0]?.id;
+
+    if (!profileId) {
+      clearTimeout(timeoutId);
+      logger.info("Klaviyo status check", {
+        email: normalizedEmail,
+        vipSubscribed: false,
+        reason: "profile_not_found",
+      });
+      return res.json({ vipSubscribed: false });
+    }
+
+    const listMembershipRes = await fetch(
+      `https://a.klaviyo.com/api/profiles/${profileId}/relationships/lists/`,
       {
         signal: controller.signal,
         headers: {
@@ -295,24 +328,28 @@ router.get("/klaviyo-status", async (req, res) => {
 
     clearTimeout(timeoutId);
 
-    if (!res.ok) {
-      const text = await res.text();
-      logger.error("Klaviyo profile search failed", {
-        status: res.status,
+    if (!listMembershipRes.ok) {
+      const text = await listMembershipRes.text();
+      logger.error("Klaviyo list membership lookup failed", {
+        status: listMembershipRes.status,
+        body: text,
         email: normalizedEmail,
+        profileId,
       });
       return res.json({ vipSubscribed: false });
     }
 
-    const data = await res.json();
-    const profileExists = data.data && data.data.length > 0;
+    const listMembershipData = await listMembershipRes.json();
+    const vipSubscribed =
+      listMembershipData?.data?.some((list) => list.id === KLAVIYO_LIST_ID) || false;
 
     logger.info("Klaviyo status check", {
       email: normalizedEmail,
-      vipSubscribed: profileExists,
+      profileId,
+      vipSubscribed,
     });
 
-    res.json({ vipSubscribed: profileExists });
+    res.json({ vipSubscribed });
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === "AbortError") {
