@@ -1,29 +1,29 @@
 import React, { useState, useEffect } from "react";
 import { CheckCircle2 } from "lucide-react";
-import { createLead, getVipStatus } from "../api/leads";
+import { createLead, getKlaviyoVipStatus } from "../api/leads";
 
-// ✅ VIP signup using logged-in user info — BUTTON ONLY
 export default function VipSignupSection({ user }) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showSection, setShowSection] = useState(true); // show by default
   const [error, setError] = useState("");
-  const [showSection, setShowSection] = useState(true);
 
-  // ✅ Hide section if user is already VIP
   useEffect(() => {
+    if (!user?.email) return;
+
     const checkVip = async () => {
-      if (!user?.email) return;
       try {
-        const status = await getVipStatus(user.email);
-        if (status.vipSubscribed) setShowSection(false);
+        const status = await getKlaviyoVipStatus(user.email);
+        if (status.vipSubscribed) setShowSection(false); // hide if already VIP
       } catch (err) {
         console.error("VIP status check failed", err);
+        // keep section visible on error
       }
     };
     checkVip();
   }, [user]);
 
-  if (!showSection || !user) return null; // Nothing to show
+  if (!showSection) return null; // hide only if confirmed VIP
 
   const handleVipClick = async () => {
     setSaving(true);
@@ -31,16 +31,17 @@ export default function VipSignupSection({ user }) {
 
     try {
       await createLead({
-        firstName: user.firstName || "",
         email: user.email,
+        firstName: user.firstName || "",
         source: "homepage",
       });
 
       setSuccess(true);
-      setShowSection(false); // optional: hide after success
+      setShowSection(false); // hide after signup
     } catch (err) {
       setError(
-        err.response?.data?.error || "Unable to join VIP list right now. Please try again."
+        err.response?.data?.error ||
+          "Unable to join VIP list right now. Please try again.",
       );
     } finally {
       setSaving(false);
@@ -56,7 +57,8 @@ export default function VipSignupSection({ user }) {
           </p>
           <h2 className="mt-4 font-serif text-4xl">Be the first to know.</h2>
           <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300">
-            New collections, limited restocks, and exclusive offers — straight to your inbox. No spam, ever.
+            New collections, limited restocks, and exclusive offers — straight
+            to your inbox. No spam, ever.
           </p>
           <div className="mt-6 space-y-3 text-sm text-slate-300">
             <p>✦ Early access to new arrivals</p>

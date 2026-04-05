@@ -1,6 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, CheckCircle2, PackageCheck, ShieldCheck, Truck } from "lucide-react";
+import { AuthContext } from "../context/AuthContext";
+import {
+  ArrowRight,
+  CheckCircle2,
+  PackageCheck,
+  ShieldCheck,
+  Truck,
+} from "lucide-react";
 import { useProducts } from "../hooks/use-products";
 import { ProductCard } from "../components/ProductCard";
 import VipSignupSection from "../components/VipSignupSection";
@@ -47,31 +54,36 @@ const STYLE_CARDS = [
   {
     category: "sparkle",
     label: "Sparkle bows",
-    description: "Statement bows for birthdays, parties, and girls who love shine.",
+    description:
+      "Statement bows for birthdays, parties, and girls who love shine.",
     palette: "from-rose-100 via-white to-amber-100",
   },
   {
     category: "classic",
     label: "Classic bows",
-    description: "Timeless shapes for portraits, school days, and polished everyday wear.",
+    description:
+      "Timeless shapes for portraits, school days, and polished everyday wear.",
     palette: "from-stone-100 via-white to-slate-100",
   },
   {
     category: "long",
     label: "Ribbon bows",
-    description: "Long-tail silhouettes with soft movement and boutique presence.",
+    description:
+      "Long-tail silhouettes with soft movement and boutique presence.",
     palette: "from-amber-50 via-white to-rose-100",
   },
 ];
 
 export default function HomePage({ addToCart }) {
+  const { user } = useContext(AuthContext);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [featuredReviews, setFeaturedReviews] = useState([]);
   const { data: allProducts, isLoading } = useProducts({});
 
   // Load real reviews from MongoDB
   useEffect(() => {
-    api.get("/api/reviews/featured")
+    api
+      .get("/api/reviews/featured")
       .then((res) => setFeaturedReviews(res.data || []))
       .catch(() => {});
   }, []);
@@ -96,10 +108,14 @@ export default function HomePage({ addToCart }) {
     .filter((product) => product.bestseller || product.featured)
     .slice(0, 4);
   const displayFeatured =
-    featuredProducts.length > 0 ? featuredProducts : (allProducts || []).slice(0, 4);
+    featuredProducts.length > 0
+      ? featuredProducts
+      : (allProducts || []).slice(0, 4);
 
   const scrollToShop = () =>
-    document.getElementById("shop-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document
+      .getElementById("shop-section")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
     <div className="bg-[#f7f3ee] text-slate-950">
@@ -136,9 +152,9 @@ export default function HomePage({ addToCart }) {
                   Beautiful bows with the polish of a real boutique brand.
                 </h1>
                 <p className="mt-6 max-w-xl text-base leading-8 text-slate-600">
-                  Sparkle Bows is built to feel gift-worthy from first click to final delivery:
-                  refined product presentation, dependable quality, and a storefront ready to
-                  support serious growth.
+                  Sparkle Bows is built to feel gift-worthy from first click to
+                  final delivery: refined product presentation, dependable
+                  quality, and a storefront ready to support serious growth.
                 </p>
                 <div className="mt-8 flex flex-wrap gap-4">
                   <button
@@ -151,7 +167,10 @@ export default function HomePage({ addToCart }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setSelectedCategory("bestseller"); scrollToShop(); }}
+                    onClick={() => {
+                      setSelectedCategory("bestseller");
+                      scrollToShop();
+                    }}
                     className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 hover:text-slate-950"
                   >
                     View best sellers
@@ -160,13 +179,29 @@ export default function HomePage({ addToCart }) {
 
                 <div className="mt-10 grid gap-4 sm:grid-cols-3">
                   {[
-                    { value: "Gift-ready", label: "Presentation that feels premium" },
-                    { value: "Small batch", label: "Crafted with close quality control" },
-                    { value: "Growth-ready", label: "Built to support real operations" },
+                    {
+                      value: "Gift-ready",
+                      label: "Presentation that feels premium",
+                    },
+                    {
+                      value: "Small batch",
+                      label: "Crafted with close quality control",
+                    },
+                    {
+                      value: "Growth-ready",
+                      label: "Built to support real operations",
+                    },
                   ].map((item) => (
-                    <div key={item.value} className="rounded-[28px] border border-slate-200 bg-[#fcfaf7] p-5">
-                      <p className="text-lg font-semibold text-slate-950">{item.value}</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">{item.label}</p>
+                    <div
+                      key={item.value}
+                      className="rounded-[28px] border border-slate-200 bg-[#fcfaf7] p-5"
+                    >
+                      <p className="text-lg font-semibold text-slate-950">
+                        {item.value}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        {item.label}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -186,8 +221,8 @@ export default function HomePage({ addToCart }) {
                           Bows that look elevated in every photo.
                         </h2>
                         <p className="mt-4 text-sm leading-7 text-slate-300">
-                          Designed for birthdays, family photos, holiday outfits, and polished
-                          everyday wear.
+                          Designed for birthdays, family photos, holiday
+                          outfits, and polished everyday wear.
                         </p>
                       </div>
                       <div className="space-y-4">
@@ -206,8 +241,9 @@ export default function HomePage({ addToCart }) {
                             Built for growth
                           </p>
                           <p className="mt-3 text-sm leading-7 text-slate-600">
-                            A more professional storefront builds confidence, raises perceived
-                            value, and helps support repeat orders as the brand grows.
+                            A more professional storefront builds confidence,
+                            raises perceived value, and helps support repeat
+                            orders as the brand grows.
                           </p>
                         </div>
                       </div>
@@ -250,7 +286,10 @@ export default function HomePage({ addToCart }) {
               </div>
               <button
                 type="button"
-                onClick={() => { setSelectedCategory("bestseller"); scrollToShop(); }}
+                onClick={() => {
+                  setSelectedCategory("bestseller");
+                  scrollToShop();
+                }}
                 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 transition hover:text-rose-600"
               >
                 Browse best sellers
@@ -262,7 +301,10 @@ export default function HomePage({ addToCart }) {
           {isLoading ? (
             <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="aspect-[4/5.7] animate-pulse rounded-[28px] bg-white" />
+                <div
+                  key={index}
+                  className="aspect-[4/5.7] animate-pulse rounded-[28px] bg-white"
+                />
               ))}
             </div>
           ) : (
@@ -283,14 +325,21 @@ export default function HomePage({ addToCart }) {
               <FadeIn key={item.category} delay={index * 90}>
                 <button
                   type="button"
-                  onClick={() => { setSelectedCategory(item.category); scrollToShop(); }}
+                  onClick={() => {
+                    setSelectedCategory(item.category);
+                    scrollToShop();
+                  }}
                   className={`w-full rounded-[34px] border border-slate-200 bg-gradient-to-br ${item.palette} p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg`}
                 >
                   <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
                     Shop by style
                   </p>
-                  <h3 className="brand-serif mt-6 text-3xl text-slate-950">{item.label}</h3>
-                  <p className="mt-4 text-sm leading-7 text-slate-600">{item.description}</p>
+                  <h3 className="brand-serif mt-6 text-3xl text-slate-950">
+                    {item.label}
+                  </h3>
+                  <p className="mt-4 text-sm leading-7 text-slate-600">
+                    {item.description}
+                  </p>
                   <div className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
                     Browse style
                     <ArrowRight className="h-4 w-4" />
@@ -302,7 +351,10 @@ export default function HomePage({ addToCart }) {
         </section>
 
         {/* FULL SHOP */}
-        <section id="shop-section" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <section
+          id="shop-section"
+          className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8"
+        >
           <FadeIn>
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div>
@@ -313,8 +365,8 @@ export default function HomePage({ addToCart }) {
                   Every bow, all in one place.
                 </h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
-                  Handmade in small batches. Each style is crafted with boutique quality and
-                  gift-worthy presentation.
+                  Handmade in small batches. Each style is crafted with boutique
+                  quality and gift-worthy presentation.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -339,7 +391,10 @@ export default function HomePage({ addToCart }) {
           {isLoading ? (
             <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="aspect-[4/5.7] animate-pulse rounded-[28px] bg-white" />
+                <div
+                  key={index}
+                  className="aspect-[4/5.7] animate-pulse rounded-[28px] bg-white"
+                />
               ))}
             </div>
           ) : filteredProducts.length === 0 ? (
@@ -349,7 +404,10 @@ export default function HomePage({ addToCart }) {
           ) : (
             <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
               {filteredProducts.map((product, index) => (
-                <FadeIn key={product._id || product.id} delay={Math.min(index * 40, 240)}>
+                <FadeIn
+                  key={product._id || product.id}
+                  delay={Math.min(index * 40, 240)}
+                >
                   <ProductCard product={product} onAddToCart={addToCart} />
                 </FadeIn>
               ))}
@@ -358,7 +416,7 @@ export default function HomePage({ addToCart }) {
         </section>
 
         {/* VIP SIGNUP */}
-        <VipSignupSection />
+        <VipSignupSection user={user} />
 
         {/* REVIEWS */}
         <section className="border-y border-slate-200 bg-white">
@@ -399,7 +457,9 @@ export default function HomePage({ addToCart }) {
                         "{review.text}"
                       </p>
                       <div className="mt-6 border-t border-slate-200 pt-5">
-                        <p className="font-semibold text-slate-950">{review.userName}</p>
+                        <p className="font-semibold text-slate-950">
+                          {review.userName}
+                        </p>
                       </div>
                     </article>
                   </FadeIn>
@@ -419,8 +479,8 @@ export default function HomePage({ addToCart }) {
               Handmade bows that look and feel like a real boutique.
             </h2>
             <p className="mx-auto mt-6 max-w-2xl text-sm leading-8 text-slate-500">
-              Every bow is made by hand with careful attention to quality, presentation,
-              and the details that make a gift feel special.
+              Every bow is made by hand with careful attention to quality,
+              presentation, and the details that make a gift feel special.
             </p>
             <button
               type="button"
