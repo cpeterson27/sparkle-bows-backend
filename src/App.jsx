@@ -45,6 +45,7 @@ export default function App() {
 
   const hasLoadedProducts = useRef(false);
   const handledOauthRef = useRef("");
+  const cartLoaded = useRef(false); // ← NEW
 
   // ───────────────── Load products once
   useEffect(() => {
@@ -84,12 +85,15 @@ export default function App() {
         if (err.response?.status !== 404) {
           console.error("Error loading cart:", err);
         }
+      } finally {
+        cartLoaded.current = true; // ← mark done whether success or error
       }
     })();
   }, []);
 
   // ───────────────── Sync cart to backend
   useEffect(() => {
+    if (!cartLoaded.current) return; // ← skip until cart is loaded from server
     api.put("/api/cart", { items: cart }).catch((err) => {
       if (err.response?.status !== 404) console.error(err);
     });
@@ -102,10 +106,8 @@ export default function App() {
     const oauthToken = params.get("token") || "";
     const oauthError = params.get("oauth_error");
 
-    // Not an OAuth redirect — nothing to do
     if (!oauthStatus && !oauthError) return;
 
-    // Prevent handling the same redirect twice
     const fingerprint = location.search;
     if (handledOauthRef.current === fingerprint) return;
     handledOauthRef.current = fingerprint;
@@ -128,7 +130,7 @@ export default function App() {
           navigate("/", { replace: true });
         });
     }
-  }, [location.search, completeOAuthLogin, navigate]); // oauthMessage intentionally excluded
+  }, [location.search, completeOAuthLogin, navigate]);
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {
