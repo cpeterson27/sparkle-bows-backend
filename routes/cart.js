@@ -38,21 +38,21 @@ router.get("/", optionalAuth, async (req, res) => {
       if (signedGuestId) {
         const guestCart = await Cart.findOne({ guestId: signedGuestId });
         if (guestCart) {
-          const userCart = await Cart.findOne({ userId: req.user._id });
+          const userCart = await Cart.findOne({ userId: req.user.userId }); // ← fixed
           if (userCart) {
             userCart.items.push(...guestCart.items);
             await userCart.save();
             await Cart.deleteOne({ guestId: signedGuestId });
             res.clearCookie("guestId");
           } else {
-            guestCart.userId = req.user._id;
+            guestCart.userId = req.user.userId; // ← fixed
             guestCart.guestId = undefined;
             await guestCart.save();
           }
         }
       }
 
-      cart = await Cart.findOne({ userId: req.user._id }).populate("items.productId");
+      cart = await Cart.findOne({ userId: req.user.userId }).populate("items.productId"); // ← fixed
     } else {
       // Guest cart
       cart = await Cart.findOne({ guestId: signedGuestId });
@@ -103,7 +103,7 @@ router.put("/", optionalAuth, async (req, res) => {
 
     if (req.user) {
       updatedCart = await Cart.findOneAndUpdate(
-        { userId: req.user._id },
+        { userId: req.user.userId }, // ← fixed
         { items },
         { new: true, upsert: true }
       ).populate("items.productId");
