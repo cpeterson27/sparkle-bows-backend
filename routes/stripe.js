@@ -11,15 +11,23 @@ const router = express.Router();
 
 router.post("/create-payment-intent", optionalAuth, async (req, res) => {
   try {
-    const { customerName, customerEmail, shippingInfo, isGift, giftMessage } = req.body;
+    const { customerName, customerEmail, shippingInfo, isGift, giftMessage } =
+      req.body;
 
     /* ------------------ VALIDATION ------------------ */
     if (!customerName || !customerEmail) {
       return res.status(400).json({ error: "Name and email are required" });
     }
 
-    if (!shippingInfo?.line1 || !shippingInfo?.city || !shippingInfo?.state || !shippingInfo?.postalCode) {
-      return res.status(400).json({ error: "Complete shipping address required" });
+    if (
+      !shippingInfo?.line1 ||
+      !shippingInfo?.city ||
+      !shippingInfo?.state ||
+      !shippingInfo?.postalCode
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Complete shipping address required" });
     }
 
     /* ------------------ LOAD CART ------------------
@@ -44,9 +52,14 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
     if (!cart && req.cookies?.refreshToken) {
       try {
         const jwt = require("jsonwebtoken");
-        const decoded = jwt.verify(req.cookies.refreshToken, process.env.JWT_REFRESH_SECRET);
+        const decoded = jwt.verify(
+          req.cookies.refreshToken,
+          process.env.JWT_REFRESH_SECRET,
+        );
         if (decoded?.userId) {
-          cart = await Cart.findOne({ userId: decoded.userId }).populate("items.productId");
+          cart = await Cart.findOne({ userId: decoded.userId }).populate(
+            "items.productId",
+          );
         }
       } catch (_) {}
     }
@@ -65,7 +78,9 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
         return res.status(400).json({ error: "Product no longer exists" });
       }
       if (product.inventory < item.quantity) {
-        return res.status(400).json({ error: `Not enough stock for ${product.name}` });
+        return res
+          .status(400)
+          .json({ error: `Not enough stock for ${product.name}` });
       }
 
       subtotal += product.price * item.quantity;
@@ -82,9 +97,28 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
     const shippingCost = calculateShipping(subtotal, totalQty);
 
     /* ------------------ STRIPE PAYMENT INTENT ------------------ */
+
+    // -------------------------
+    // Customer info
+    // -------------------------
+    const customer = await stripe.customers.create({
+      name: customerName,
+      email: customerEmail,
+      address: {
+        line1: shippingInfo.line1,
+        line2: shippingInfo.line2 || undefined,
+        city: shippingInfo.city,
+        state: shippingInfo.state,
+        postal_code: shippingInfo.postalCode,
+        country: shippingInfo.country || "US",
+      },
+    });
+
+    // Create a PaymentIntent with the order amount and currency
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round((subtotal + shippingCost) * 100),
       currency: "usd",
+       customer: customer.id,
       automatic_payment_methods: { enabled: true },
       automatic_tax: { enabled: true },
       shipping: {
