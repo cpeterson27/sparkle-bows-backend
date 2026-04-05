@@ -176,8 +176,9 @@ router.post("/", async (req, res) => {
 
         // 4️⃣ Send owner notification
         try {
-          await sendVipNotification({
-            email: process.env.OWNER_EMAIL || "sparklebowshop@gmail.com",
+          const ownerEmailResult = await sendVipNotification({
+            to: process.env.OWNER_EMAIL || "sparklebowshop@gmail.com",
+            email: normalizedEmail,
             firstName: firstName || lead.firstName || "",
             source,
             subject: `⭐ New VIP Subscriber: ${normalizedEmail}`,
@@ -189,9 +190,17 @@ router.post("/", async (req, res) => {
               <p><a href="https://www.sparklebows.shop/admin">View in Admin Panel</a></p>
             `,
           });
-          logger.info("VIP owner notification sent", {
-            email: normalizedEmail,
-          });
+
+          if (!ownerEmailResult?.success) {
+            logger.error("Failed to send VIP owner notification", {
+              email: normalizedEmail,
+              error: ownerEmailResult?.error,
+            });
+          } else {
+            logger.info("VIP owner notification sent", {
+              email: normalizedEmail,
+            });
+          }
         } catch (err) {
           logger.error("Failed to send VIP owner notification", {
             error: err.message,
@@ -201,7 +210,7 @@ router.post("/", async (req, res) => {
 
         // 5️⃣ Send subscriber welcome email
         try {
-          await sendVipNotification({
+          const subscriberEmailResult = await sendVipNotification({
             to: normalizedEmail, // THIS GOES TO THE PERSON WHO SIGNED UP
             email: normalizedEmail,
             firstName: firstName || lead.firstName || "",
@@ -220,9 +229,16 @@ router.post("/", async (req, res) => {
               <p>✨ Thanks for joining,<br/>Sparkle & Twirl Bows Team</p>
             `,
           });
-          logger.info("VIP welcome email sent to subscriber", {
-            email: normalizedEmail,
-          });
+          if (!subscriberEmailResult?.success) {
+            logger.error("Failed to send VIP welcome email", {
+              email: normalizedEmail,
+              error: subscriberEmailResult?.error,
+            });
+          } else {
+            logger.info("VIP welcome email sent to subscriber", {
+              email: normalizedEmail,
+            });
+          }
         } catch (err) {
           logger.error("Failed to send VIP welcome email", {
             email: normalizedEmail,

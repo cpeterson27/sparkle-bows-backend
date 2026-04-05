@@ -195,11 +195,18 @@ async function sendOwnerNotification(order) {
   });
 }
 
-async function sendVipNotification({ to, email, firstName = "", source = "website" }) {
+async function sendVipNotification({
+  to,
+  email,
+  firstName = "",
+  source = "website",
+  subject,
+  html,
+}) {
   return sendEmail({
     to,
-    subject: `⭐ New VIP Subscriber: ${email}`,
-    html: getVipLeadHTML({ email, firstName, source }),
+    subject: subject || `⭐ New VIP Subscriber: ${email}`,
+    html: html || getVipLeadHTML({ email, firstName, source }),
   });
 }
 
