@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { CheckCircle2 } from "lucide-react";
-import { createLead, getKlaviyoVipStatus } from "../api/leads";
+import { createLead, getVipStatus } from "../api/leads";
 
 export default function VipSignupSection({ user }) {
   const [saving, setSaving] = useState(false);
@@ -13,7 +13,7 @@ export default function VipSignupSection({ user }) {
 
     const checkVip = async () => {
       try {
-        const status = await getKlaviyoVipStatus(user.email);
+        const status = await getVipStatus(user.email);
         if (status.vipSubscribed) setShowSection(false); // hide if already VIP
       } catch (err) {
         console.error("VIP status check failed", err);

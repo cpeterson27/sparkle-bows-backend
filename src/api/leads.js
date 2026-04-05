@@ -14,10 +14,10 @@ export async function createLead(payload) {
  * @param {string} email
  * @returns {Promise<{ vipSubscribed: boolean }>}
  */
-export async function getKlaviyoVipStatus(email) {
+export async function getVipStatus(email) {
   if (!email) return { vipSubscribed: false };
   const { data } = await api.get(
-    `/api/leads/klaviyo-status?email=${encodeURIComponent(email)}`,
+    `/api/leads/status?email=${encodeURIComponent(email)}`,
   );
   return data;
 }
