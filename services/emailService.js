@@ -5,6 +5,10 @@ const logger = require("../logger");
 const resend = new Resend(process.env.RESEND_API_KEY);
 const defaultFromEmail =
   process.env.EMAIL_FROM || "Sparkle Bows <hello@mail.sparklebows.shop>";
+const supportEmail = process.env.OWNER_EMAIL || "sparklebowshop@gmail.com";
+const unsubscribeMailto = `mailto:${supportEmail}?subject=${encodeURIComponent(
+  "Unsubscribe me from Sparkle Bows VIP",
+)}`;
 
 // -------------------------
 // HELPERS
@@ -232,8 +236,9 @@ function getVipWelcomeHTML({ firstName = "" }) {
         </tr>
         <tr>
           <td style="padding:20px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#64748b;">Questions? Just reply to this email.</p>
-            <p style="margin:0;font-size:12px;color:#94a3b8;">© ${new Date().getFullYear()} Sparkle Bows</p>
+            <p style="margin:0 0 8px 0;font-size:13px;color:#64748b;">Questions? Just reply to this email or contact ${supportEmail}.</p>
+            <p style="margin:0 0 8px 0;font-size:12px;color:#64748b;">If you no longer want VIP emails, <a href="${unsubscribeMailto}" style="color:#9f1239;">click here to unsubscribe</a>.</p>
+            <p style="margin:0;font-size:12px;color:#94a3b8;">Sparkle Bows • ${supportEmail} • © ${new Date().getFullYear()} Sparkle Bows</p>
           </td>
         </tr>
       </table>
@@ -256,7 +261,8 @@ function getVipWelcomeText({ firstName = "" }) {
     "Visit the shop:",
     `${process.env.FRONTEND_URL}`,
     "",
-    "Questions? Reply to this email.",
+    `Questions? Reply to this email or contact ${supportEmail}.`,
+    `To unsubscribe from VIP emails, email ${supportEmail} with the subject: Unsubscribe me from Sparkle Bows VIP`,
     "",
     "Sparkle Bows",
   ].join("\n");
