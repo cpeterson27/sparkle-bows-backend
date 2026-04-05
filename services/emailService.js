@@ -21,13 +21,15 @@ const formatDate = (date) =>
 // -------------------------
 // SEND HELPER
 // -------------------------
-async function sendEmail({ to, subject, html, from }) {
+async function sendEmail({ to, subject, html, text, from, replyTo }) {
   try {
     const { data, error } = await resend.emails.send({
       from: from || defaultFromEmail,
       to,
       subject,
       html,
+      text,
+      reply_to: replyTo,
     });
 
     if (error) {
@@ -176,6 +178,90 @@ function getVipLeadHTML(lead) {
 </html>`;
 }
 
+function getVipLeadText(lead) {
+  return [
+    "NEW VIP SUBSCRIBER",
+    "",
+    "Someone just joined the VIP list.",
+    `Email: ${lead.email}`,
+    `Name: ${lead.firstName || "Not provided"}`,
+    `Source: ${lead.source || "website"}`,
+    "",
+    `View in Admin Panel: ${process.env.FRONTEND_URL}/admin`,
+  ].join("\n");
+}
+
+function getVipWelcomeHTML({ firstName = "" }) {
+  const greetingName = firstName ? ` ${firstName}` : "";
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Welcome to Sparkle Bows VIP</title></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#fff7fb;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fff7fb;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #fbcfe8;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#ec4899 0%,#fb7185 55%,#f59e0b 100%);padding:32px 28px;text-align:center;">
+            <p style="margin:0 0 10px 0;color:#fff1f2;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">Sparkle Bows VIP</p>
+            <h1 style="margin:0;color:#ffffff;font-size:30px;line-height:1.2;">You're officially in.</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 28px;color:#334155;">
+            <p style="margin:0 0 16px 0;font-size:16px;line-height:1.7;">Hi${greetingName},</p>
+            <p style="margin:0 0 16px 0;font-size:16px;line-height:1.7;">
+              Thanks for joining the Sparkle Bows VIP list. You're on the list for first access to new drops, restock updates, and subscriber-only offers.
+            </p>
+            <div style="background-color:#fff1f2;border:1px solid #fecdd3;border-radius:14px;padding:20px 22px;margin:24px 0;">
+              <p style="margin:0 0 12px 0;font-size:14px;font-weight:700;color:#9f1239;letter-spacing:0.04em;text-transform:uppercase;">What you'll get</p>
+              <ul style="padding-left:20px;margin:0;color:#475569;font-size:15px;line-height:1.8;">
+                <li>Early access to new arrivals</li>
+                <li>Restock alerts on customer favorites</li>
+                <li>Exclusive subscriber discounts</li>
+              </ul>
+            </div>
+            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.7;">
+              We’ll keep it thoughtful and low-volume. No spam, and you can unsubscribe any time.
+            </p>
+            <div style="text-align:center;">
+              <a href="${process.env.FRONTEND_URL}" style="display:inline-block;background-color:#0f172a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:9999px;font-weight:700;font-size:15px;">Visit Sparkle Bows</a>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+            <p style="margin:0 0 8px 0;font-size:13px;color:#64748b;">Questions? Just reply to this email.</p>
+            <p style="margin:0;font-size:12px;color:#94a3b8;">© ${new Date().getFullYear()} Sparkle Bows</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function getVipWelcomeText({ firstName = "" }) {
+  return [
+    `Hi${firstName ? ` ${firstName}` : ""},`,
+    "",
+    "Thanks for joining the Sparkle Bows VIP list.",
+    "You're on the list for:",
+    "- Early access to new arrivals",
+    "- Restock alerts on customer favorites",
+    "- Exclusive subscriber discounts",
+    "",
+    "Visit the shop:",
+    `${process.env.FRONTEND_URL}`,
+    "",
+    "Questions? Reply to this email.",
+    "",
+    "Sparkle Bows",
+  ].join("\n");
+}
+
 // -------------------------
 // SEND FUNCTIONS
 // -------------------------
@@ -202,11 +288,15 @@ async function sendVipNotification({
   source = "website",
   subject,
   html,
+  text,
+  replyTo,
 }) {
   return sendEmail({
     to,
     subject: subject || `⭐ New VIP Subscriber: ${email}`,
     html: html || getVipLeadHTML({ email, firstName, source }),
+    text: text || getVipLeadText({ email, firstName, source }),
+    replyTo,
   });
 }
 
@@ -222,4 +312,7 @@ module.exports = {
   formatDate,
   getOrderConfirmationHTML,
   getVipLeadHTML,
+  getVipLeadText,
+  getVipWelcomeHTML,
+  getVipWelcomeText,
 };

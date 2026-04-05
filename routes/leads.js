@@ -1,6 +1,11 @@
 const express = require("express");
 const Lead = require("../models/Lead");
-const { sendVipNotification } = require("../services/emailService");
+const {
+  sendVipNotification,
+  getVipLeadText,
+  getVipWelcomeHTML,
+  getVipWelcomeText,
+} = require("../services/emailService");
 const logger = require("../logger");
 
 const router = express.Router();
@@ -181,14 +186,21 @@ router.post("/", async (req, res) => {
             email: normalizedEmail,
             firstName: firstName || lead.firstName || "",
             source,
-            subject: `⭐ New VIP Subscriber: ${normalizedEmail}`,
+            subject: `New VIP signup: ${normalizedEmail}`,
             html: `
-              <p>Someone just joined the VIP list! 🎀</p>
-              <p><strong>Email:</strong> ${normalizedEmail}</p>
-              <p><strong>Name:</strong> ${firstName || lead.firstName || ""}</p>
-              <p><strong>Source:</strong> ${source}</p>
-              <p><a href="https://www.sparklebows.shop/admin">View in Admin Panel</a></p>
+              <h1 style="margin-bottom:16px;">New VIP signup</h1>
+              <p style="margin-bottom:8px;">A customer just joined the Sparkle Bows VIP list.</p>
+              <p style="margin-bottom:6px;"><strong>Email:</strong> ${normalizedEmail}</p>
+              <p style="margin-bottom:6px;"><strong>Name:</strong> ${firstName || lead.firstName || "Not provided"}</p>
+              <p style="margin-bottom:16px;"><strong>Source:</strong> ${source}</p>
+              <p><a href="https://www.sparklebows.shop/admin">Open the admin panel</a></p>
             `,
+            text: getVipLeadText({
+              email: normalizedEmail,
+              firstName: firstName || lead.firstName || "",
+              source,
+            }),
+            replyTo: normalizedEmail,
           });
 
           if (!ownerEmailResult?.success) {
@@ -215,19 +227,14 @@ router.post("/", async (req, res) => {
             email: normalizedEmail,
             firstName: firstName || lead.firstName || "",
             source,
-            subject: "🎀 Welcome to the Sparkle Bows VIP List!",
-            html: `
-              <h1>🎀 Welcome to VIP!</h1>
-              <p>Hi ${firstName || lead.firstName || ""},</p>
-              <p>You're now on the Sparkle Bows VIP list! You'll get:</p>
-              <ul>
-                <li>Early access to new bows</li>
-                <li>Restock notifications</li>
-                <li>Exclusive subscriber discounts</li>
-              </ul>
-              <p>No spam - unsubscribe anytime.</p>
-              <p>✨ Thanks for joining,<br/>Sparkle & Twirl Bows Team</p>
-            `,
+            subject: "Welcome to Sparkle Bows VIP",
+            html: getVipWelcomeHTML({
+              firstName: firstName || lead.firstName || "",
+            }),
+            text: getVipWelcomeText({
+              firstName: firstName || lead.firstName || "",
+            }),
+            replyTo: process.env.OWNER_EMAIL || "sparklebowshop@gmail.com",
           });
           if (!subscriberEmailResult?.success) {
             logger.error("Failed to send VIP welcome email", {
