@@ -143,8 +143,17 @@ router.post("/", async (req, res) => {
         email: normalizedEmail,
         firstName,
         source,
-        vipSubscribed: false,
+        vipSubscribed: true,
       });
+    } else if (!lead.vipSubscribed) {
+      lead.vipSubscribed = true;
+      if (firstName && !lead.firstName) {
+        lead.firstName = firstName;
+      }
+      if (source && lead.source !== source) {
+        lead.source = source;
+      }
+      await lead.save();
     }
 
     // 2️⃣ Respond immediately
@@ -168,15 +177,8 @@ router.post("/", async (req, res) => {
           eventPromise,
         ]);
 
-        // Update vipSubscribed if list add succeeded
-        if (
-          results[0].status === "fulfilled" &&
-          results[0].value &&
-          !lead.vipSubscribed
-        ) {
-          lead.vipSubscribed = true;
-          await lead.save();
-          logger.info("Lead vipSubscribed updated", { email: lead.email });
+        if (results[0].status === "fulfilled" && results[0].value) {
+          logger.info("Lead vipSubscribed confirmed", { email: lead.email });
         }
 
         // 4️⃣ Send owner notification
