@@ -44,6 +44,21 @@ export default function SiteFooter({ onShowContact }) {
             Business
           </p>
           <div className="mt-5 space-y-3 text-sm text-slate-300">
+            <Link to="/privacy" className="block transition hover:text-white">
+              Privacy policy
+            </Link>
+            <Link to="/terms" className="block transition hover:text-white">
+              Terms of service
+            </Link>
+            <Link to="/refunds" className="block transition hover:text-white">
+              Refund policy
+            </Link>
+            <Link
+              to="/shipping-policy"
+              className="block transition hover:text-white"
+            >
+              Shipping policy
+            </Link>
             <Link to="/profile" className="block transition hover:text-white">
               Customer profile
             </Link>

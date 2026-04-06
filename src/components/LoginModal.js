@@ -13,6 +13,10 @@ import api from "../api/axios.config";
 import API_URL from "../config/api";
 import { AuthContext } from "../context/AuthContext";
 import { trackLogin, trackSignUp } from "../lib/analytics";
+import {
+  createFormProtectionState,
+  getProtectedFormPayload,
+} from "../lib/formProtection";
 
 export default function LoginModal({ onClose, onLogin }) {
   const { loginUser, verifyTwoFactorLogin } = useContext(AuthContext);
@@ -26,6 +30,9 @@ export default function LoginModal({ onClose, onLogin }) {
     password: "",
     name: "",
   });
+  const [signupProtection, setSignupProtection] = useState(
+    createFormProtectionState,
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -54,11 +61,14 @@ export default function LoginModal({ onClose, onLogin }) {
       if (isSignup) {
         await api.post(
           "/api/auth/signup",
-          {
-            name: formData.name,
-            email: formData.email,
-            password: formData.password,
-          },
+          getProtectedFormPayload(
+            {
+              name: formData.name,
+              email: formData.email,
+              password: formData.password,
+            },
+            signupProtection,
+          ),
           { withCredentials: true },
         );
       }
@@ -229,6 +239,22 @@ export default function LoginModal({ onClose, onLogin }) {
 
             <form onSubmit={handleCredentialsSubmit} className="mt-6 space-y-4">
               {isSignup ? (
+                <input
+                  type="text"
+                  tabIndex="-1"
+                  autoComplete="off"
+                  aria-hidden="true"
+                  value={signupProtection.website}
+                  onChange={(event) =>
+                    setSignupProtection((current) => ({
+                      ...current,
+                      website: event.target.value,
+                    }))
+                  }
+                  className="hidden"
+                />
+              ) : null}
+              {isSignup ? (
                 <label className="block">
                   <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
                     <User className="h-4 w-4 text-slate-400" />
@@ -310,6 +336,7 @@ export default function LoginModal({ onClose, onLogin }) {
               onClick={() => {
                 setIsSignup((current) => !current);
                 setError("");
+                setSignupProtection(createFormProtectionState());
               }}
               className="mt-5 w-full text-sm font-medium text-rose-600 transition hover:text-rose-700"
             >

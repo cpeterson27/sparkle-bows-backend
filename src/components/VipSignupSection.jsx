@@ -2,12 +2,17 @@ import React, { useState, useEffect } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { createLead, getVipStatus } from "../api/leads";
 import { trackGenerateLead } from "../lib/analytics";
+import {
+  createFormProtectionState,
+  getProtectedFormPayload,
+} from "../lib/formProtection";
 
 export default function VipSignupSection({ user }) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [showSection, setShowSection] = useState(true); // show by default
   const [error, setError] = useState("");
+  const [formProtection] = useState(createFormProtectionState);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -31,11 +36,16 @@ export default function VipSignupSection({ user }) {
     setError("");
 
     try {
-      await createLead({
-        email: user.email,
-        firstName: user.firstName || "",
-        source: "homepage",
-      });
+      await createLead(
+        getProtectedFormPayload(
+          {
+            email: user.email,
+            firstName: user.firstName || "",
+            source: "homepage",
+          },
+          formProtection,
+        ),
+      );
       trackGenerateLead({
         formName: "vip_signup",
         leadType: "vip",

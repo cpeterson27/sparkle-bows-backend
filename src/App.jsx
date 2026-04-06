@@ -13,6 +13,7 @@ import HomePage from "./pages/HomePage";
 import ProductPage from "./pages/ProductPage";
 import CollectionPage from "./pages/CollectionPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
+import PolicyPage from "./pages/PolicyPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 
@@ -341,6 +342,19 @@ export default function App() {
           <Route
             path="/collections/:slug"
             element={<CollectionPage products={products} addToCart={addToCart} />}
+          />
+          <Route
+            path="/privacy"
+            element={<PolicyPage policyKey="privacy" />}
+          />
+          <Route path="/terms" element={<PolicyPage policyKey="terms" />} />
+          <Route
+            path="/refunds"
+            element={<PolicyPage policyKey="refunds" />}
+          />
+          <Route
+            path="/shipping-policy"
+            element={<PolicyPage policyKey="shipping" />}
           />
           <Route
             path="/orders"

@@ -4,6 +4,10 @@ import { X, Send, Sparkles } from "lucide-react";
 import { sendContactMessage } from "../api/contact";
 import { AuthContext } from "../context/AuthContext";
 import { trackGenerateLead } from "../lib/analytics";
+import {
+  createFormProtectionState,
+  getProtectedFormPayload,
+} from "../lib/formProtection";
 
 export default function ContactModal({ onClose }) {
   const { user } = useContext(AuthContext);
@@ -13,6 +17,7 @@ export default function ContactModal({ onClose }) {
     subject: "",
     message: "",
   });
+  const [formProtection, setFormProtection] = useState(createFormProtectionState);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
@@ -31,7 +36,7 @@ export default function ContactModal({ onClose }) {
     setError("");
 
     try {
-      await sendContactMessage(formData);
+      await sendContactMessage(getProtectedFormPayload(formData, formProtection));
       trackGenerateLead({
         formName: "contact_modal",
         leadType: "contact",
@@ -97,6 +102,20 @@ export default function ContactModal({ onClose }) {
             ) : null}
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+              <input
+                type="text"
+                tabIndex="-1"
+                autoComplete="off"
+                aria-hidden="true"
+                value={formProtection.website}
+                onChange={(e) =>
+                  setFormProtection((current) => ({
+                    ...current,
+                    website: e.target.value,
+                  }))
+                }
+                className="hidden"
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-slate-700">
