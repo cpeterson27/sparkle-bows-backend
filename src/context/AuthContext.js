@@ -2,6 +2,12 @@ import React, { createContext, useState, useEffect, useCallback } from "react";
 import api, { injectAccessTokenGetter, injectAccessTokenSetter } from "../api/axios.config";
 import { fetchCurrentUser, updateCurrentUserProfile } from "../api/account";
 import { verifyTwoFactorLogin as verifyTwoFactorLoginRequest } from "../api/security";
+import { hasOAuthParams } from "../auth/oauthState";
+import {
+  clearSessionMarker,
+  hasSessionMarker,
+  markSessionActive,
+} from "../auth/sessionState";
 
 export const AuthContext = createContext();
 
@@ -25,6 +31,9 @@ export const AuthProvider = ({ children }) => {
   const setAuth = (userData, token) => {
     setUser(userData);
     setAccessToken(token);
+    if (userData) {
+      markSessionActive();
+    }
   };
 
   const applyAuthPayload = useCallback(
@@ -42,6 +51,7 @@ export const AuthProvider = ({ children }) => {
   const clearAuth = () => {
     setUser(null);
     setAccessToken(null);
+    clearSessionMarker();
   };
 
   const tryRefresh = useCallback(async () => {
@@ -68,12 +78,14 @@ export const AuthProvider = ({ children }) => {
     const params = new URLSearchParams(window.location.search);
     const isOAuthRedirect =
       window.location.pathname === "/auth/callback" ||
-      params.get("oauth") === "success" ||
-      params.has("oauth_error");
+      params.get("oauth_return") === "1" ||
+      hasOAuthParams(window.location.search);
     if (isOAuthRedirect) {
       setLoading(false);
-    } else {
+    } else if (hasSessionMarker()) {
       tryRefresh();
+    } else {
+      setLoading(false);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

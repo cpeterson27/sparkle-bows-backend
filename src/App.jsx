@@ -30,6 +30,7 @@ import ThankYou from "./components/ThankYou";
 import { createReview, updateReview, deleteReview } from "./api/reviews";
 import api from "./api/axios.config";
 import { AuthContext } from "./context/AuthContext";
+import { consumeStoredOAuthResult, hasOAuthParams } from "./auth/oauthState";
 
 export default function App() {
   const { user, loading: authLoading, completeOAuthLogin } = useContext(AuthContext);
@@ -107,14 +108,24 @@ export default function App() {
 
   // ───────────────── Handle OAuth redirect
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
+    const pendingSearch =
+      hasOAuthParams(location.search)
+        ? location.search
+        : new URLSearchParams(location.search).get("oauth_return") === "1"
+          ? consumeStoredOAuthResult()
+          : "";
+
+    if (!pendingSearch) return;
+
+    const params = new URLSearchParams(
+      pendingSearch.startsWith("?") ? pendingSearch.slice(1) : pendingSearch,
+    );
     const oauthStatus = params.get("oauth");
-    const oauthToken = params.get("token") || "";
-    const oauthError = params.get("oauth_error");
+    const oauthToken =
+      params.get("accessToken") || params.get("token") || "";
+    const oauthError = params.get("oauth_error") || params.get("error");
 
-    if (!oauthStatus && !oauthError) return;
-
-    const fingerprint = location.search;
+    const fingerprint = pendingSearch;
     if (handledOauthRef.current === fingerprint) return;
     handledOauthRef.current = fingerprint;
 

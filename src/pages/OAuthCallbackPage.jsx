@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
+import { storeOAuthResult } from "../auth/oauthState";
 
 export default function OAuthCallbackPage() {
   const { completeOAuthLogin } = useContext(AuthContext);
@@ -9,6 +10,11 @@ export default function OAuthCallbackPage() {
   const [message, setMessage] = useState("Finishing sign-in...");
 
   useEffect(() => {
+    if (storeOAuthResult(window.location.search)) {
+      navigate("/?oauth_return=1", { replace: true });
+      return;
+    }
+
     const accessToken = params.get("accessToken") || params.get("token");
     const provider = params.get("provider");
     const error = params.get("error") || params.get("oauth_error");

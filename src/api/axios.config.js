@@ -37,6 +37,28 @@ api.interceptors.request.use(
 let isRefreshing = false;
 let refreshQueue = [];
 
+function normalizeRequestPath(url = "") {
+  if (!url) return "";
+
+  try {
+    return new URL(url, API_URL).pathname;
+  } catch {
+    return url;
+  }
+}
+
+function shouldSkipRefresh(error) {
+  const originalRequest = error?.config;
+  const requestPath = normalizeRequestPath(originalRequest?.url);
+
+  return (
+    error.response?.status !== 401 ||
+    originalRequest?._retry ||
+    requestPath.startsWith("/api/auth/") ||
+    requestPath.startsWith("/api/security/")
+  );
+}
+
 function processQueue(error, token = null) {
   refreshQueue.forEach((p) => {
     if (error) {
@@ -53,13 +75,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Only handle 401s that haven't already been retried
-    if (
-      error.response?.status !== 401 ||
-      originalRequest._retry ||
-      originalRequest.url?.includes("/api/auth/refresh-token") ||
-      originalRequest.url?.includes("/api/auth/login")
-    ) {
+    // Only refresh for expired session failures on non-auth API routes.
+    if (shouldSkipRefresh(error)) {
       return Promise.reject(error);
     }
 
@@ -101,6 +118,10 @@ api.interceptors.response.use(
       originalRequest.headers.Authorization = `Bearer ${newToken}`;
       return api(originalRequest);
     } catch (refreshError) {
+      if (setAccessToken) {
+        setAccessToken(null);
+      }
+
       // Refresh failed — clear the queue and let the error propagate
       processQueue(refreshError, null);
       return Promise.reject(refreshError);
