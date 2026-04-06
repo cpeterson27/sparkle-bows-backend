@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
-export default function SiteFooter() {
+export default function SiteFooter({ onShowContact }) {
   return (
     <footer className="border-t border-slate-200 bg-slate-950 text-slate-200">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1.25fr_0.9fr_0.9fr] lg:px-8">
@@ -50,6 +50,19 @@ export default function SiteFooter() {
             <Link to="/settings" className="block transition hover:text-white">
               Account settings
             </Link>
+            <button
+              type="button"
+              onClick={onShowContact}
+              className="block text-left transition hover:text-white"
+            >
+              Contact support
+            </button>
+            <a
+              href="mailto:sparklebowshop@gmail.com"
+              className="block transition hover:text-white"
+            >
+              sparklebowshop@gmail.com
+            </a>
             <p>Professional small-batch production</p>
             <p>Reliable packaging and fulfillment</p>
           </div>

@@ -15,7 +15,12 @@ function NavButton({ children, onClick }) {
   );
 }
 
-export default function Header({ cartItemCount, onShowLogin, onShowCart }) {
+export default function Header({
+  cartItemCount,
+  onShowLogin,
+  onShowCart,
+  onShowContact,
+}) {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
@@ -85,6 +90,7 @@ export default function Header({ cartItemCount, onShowLogin, onShowCart }) {
           >
             Collections
           </NavLink>
+          <NavButton onClick={onShowContact}>Contact</NavButton>
           {user && (
             <NavLink
               to="/orders"

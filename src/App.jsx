@@ -273,6 +273,7 @@ export default function App() {
           cartItemCount={cartItemCount}
           onShowLogin={() => setShowLogin(true)}
           onShowCart={() => setShowCart((p) => !p)}
+          onShowContact={() => setShowContact(true)}
         />
       )}
 
@@ -346,7 +347,7 @@ export default function App() {
         </Routes>
       </main>
 
-      {!isAdminRoute && <SiteFooter />}
+      {!isAdminRoute && <SiteFooter onShowContact={() => setShowContact(true)} />}
 
       {showCart && (
         <CartSidebar

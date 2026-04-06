@@ -1,35 +1,34 @@
-// src/components/ContactModal.js
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
-import emailjs from "@emailjs/browser";
 import { X, Send, Sparkles } from "lucide-react";
+import { sendContactMessage } from "../api/contact";
 
 export default function ContactModal({ onClose }) {
   const [formData, setFormData] = useState({
-    from_name: "",
-    from_email: "",
+    name: "",
+    email: "",
+    subject: "",
     message: "",
   });
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSending(true);
+    setError("");
 
     try {
-      await emailjs.send(
-        "service_fpb3uf8",
-        "template_bstlqom",
-        formData,
-        "KwTSsw-V2pEjvsn8I"
-      );
-
+      await sendContactMessage(formData);
       setSent(true);
       setTimeout(onClose, 2000);
-    } catch (error) {
-      console.error("Error sending email:", error);
-      alert("Failed to send message. Please try again!");
+    } catch (submissionError) {
+      console.error("Error sending contact message:", submissionError);
+      setError(
+        submissionError.response?.data?.error ||
+          "We could not send your message right now. Please try again.",
+      );
       setSending(false);
     }
   };
@@ -43,101 +42,136 @@ export default function ContactModal({ onClose }) {
       {/* SUCCESS STATE */}
       {sent ? (
         <div
-          className="bg-white rounded-3xl p-12 shadow-2xl max-w-md w-full text-center border-4 border-pink-300 animate-in zoom-in"
+          className="max-w-md w-full rounded-3xl border border-rose-200 bg-white p-12 text-center shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <Sparkles className="w-16 h-16 text-pink-500 mx-auto mb-4 animate-spin" />
-          <h3 className="text-2xl font-bold text-pink-600 mb-2">
+          <Sparkles className="mx-auto mb-4 h-16 w-16 text-rose-500" />
+          <h3 className="mb-2 text-2xl font-semibold text-slate-950">
             Message Sent!
           </h3>
-          <p className="text-gray-600">
-            We'll get back to you soon! 💖
+          <p className="text-sm leading-7 text-slate-600">
+            Your note went straight to Sparkle Bows support. You can also expect a reply at the email address you entered.
           </p>
         </div>
       ) : (
-        /* FORM STATE */
         <div
-          className="bg-white rounded-3xl shadow-2xl max-w-lg w-full border-4 border-pink-300 relative animate-in zoom-in"
+          className="relative w-full max-w-xl rounded-[32px] border border-slate-200 bg-white shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Close */}
           <button
+            type="button"
             onClick={onClose}
-            className="cursor-pointer absolute -top-4 -right-4 bg-red-500 hover:bg-red-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-2xl border-4 border-white transition-all hover:scale-110"
+            className="absolute right-5 top-5 rounded-full border border-slate-200 bg-white p-3 text-slate-500 transition hover:border-rose-300 hover:text-slate-950"
           >
-            <X className="w-6 h-6" />
+            <X className="h-5 w-5" />
           </button>
 
           <div className="p-8">
-            <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600 mb-2 text-center">
-              Contact Us! 💌
-            </h2>
-
-            <p className="text-gray-600 text-center mb-6">
-              Have questions about our sparkly bows? Send us a message!
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+              Contact Sparkle Bows
+            </p>
+            <h2 className="mt-4 font-serif text-4xl text-slate-950">How can we help?</h2>
+            <p className="mt-3 max-w-lg text-sm leading-7 text-slate-500">
+              Customers can use this form any time for order questions, product help, gift requests, or wholesale inquiries. Your message is sent directly to the support inbox.
             </p>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-pink-600 font-bold mb-2">
-                  Your Name
+            {error ? (
+              <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
+
+            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">
+                    Your name
+                  </span>
+                  <input
+                    required
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                    placeholder="Cassandra Peterson"
+                  />
                 </label>
-                <input
-                  required
-                  type="text"
-                  value={formData.from_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, from_name: e.target.value })
-                  }
-                  className="w-full p-3 rounded-xl border-2 border-pink-200 focus:border-pink-500 outline-none"
-                  placeholder="Princess Sparkle"
-                />
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">
+                    Your email
+                  </span>
+                  <input
+                    required
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email: e.target.value })
+                    }
+                    className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                    placeholder="sparkle@example.com"
+                    autoComplete="email"
+                  />
+                </label>
               </div>
 
               <div>
-                <label className="block text-pink-600 font-bold mb-2">
-                  Your Email
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">
+                    Subject
+                  </span>
+                  <input
+                    required
+                    type="text"
+                    value={formData.subject}
+                    onChange={(e) =>
+                      setFormData({ ...formData, subject: e.target.value })
+                    }
+                    className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                    placeholder="Question about my order"
+                    maxLength={120}
+                  />
                 </label>
-                <input
-                  required
-                  type="email"
-                  value={formData.from_email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, from_email: e.target.value })
-                  }
-                  className="w-full p-3 rounded-xl border-2 border-pink-200 focus:border-pink-500 outline-none"
-                  placeholder="sparkle@example.com"
-                />
               </div>
 
               <div>
-                <label className="block text-pink-600 font-bold mb-2">
-                  Your Message
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">
+                    Message
+                  </span>
+                  <textarea
+                    required
+                    value={formData.message}
+                    onChange={(e) =>
+                      setFormData({ ...formData, message: e.target.value })
+                    }
+                    className="h-36 w-full resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                    placeholder="Tell us what you need and we’ll get back to you as soon as we can."
+                    minLength={10}
+                    maxLength={5000}
+                  />
                 </label>
-                <textarea
-                  required
-                  value={formData.message}
-                  onChange={(e) =>
-                    setFormData({ ...formData, message: e.target.value })
-                  }
-                  className="w-full p-3 rounded-xl border-2 border-pink-200 focus:border-pink-500 outline-none h-32 resize-none"
-                  placeholder="Tell us what's on your mind! ✨"
-                />
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-500">
+                This message goes directly to your support inbox and includes the customer’s reply-to email so you can answer them professionally.
               </div>
 
               <button
                 type="submit"
                 disabled={sending}
-                className="cursor-pointer w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-bold py-4 rounded-full shadow-lg transition-all hover:scale-105 flex items-center justify-center gap-2 disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
               >
                 {sending ? (
                   <>
-                    <Sparkles className="w-5 h-5 animate-spin" />
+                    <Sparkles className="h-5 w-5 animate-spin" />
                     Sending...
                   </>
                 ) : (
                   <>
-                    <Send className="w-5 h-5" />
+                    <Send className="h-5 w-5" />
                     Send Message
                   </>
                 )}
