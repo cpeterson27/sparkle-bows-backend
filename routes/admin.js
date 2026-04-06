@@ -24,9 +24,11 @@ router.get("/analytics", async (req, res) => {
     }
 
     // ── Core metrics ──────────────────────────────────────────────────────────
+    const completedOrderStatuses = ["processing", "shipped", "delivered"];
+
     const paidOrderFilter = {
       ...dateFilter,
-      status: { $ne: "pending" },
+      status: { $in: completedOrderStatuses },
     };
 
     const totalOrders = await Order.countDocuments(paidOrderFilter);
@@ -48,6 +50,12 @@ router.get("/analytics", async (req, res) => {
       { $group: { _id: null, total: { $sum: "$shippingCost" } } },
     ]);
     const totalShippingCollected = shippingResult[0]?.total || 0;
+
+    const shippingSpendResult = await Order.aggregate([
+      { $match: paidOrderFilter },
+      { $group: { _id: null, total: { $sum: "$actualShippingLabelCost" } } },
+    ]);
+    const totalShippingSpend = shippingSpendResult[0]?.total || 0;
 
     const stripeFeesResult = await Order.aggregate([
       { $match: paidOrderFilter },
@@ -136,38 +144,28 @@ router.get("/analytics", async (req, res) => {
 
     // ── Product profit stats ──────────────────────────────────────────────────
     const productProfitStats = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $unwind: "$items" },
       {
         $group: {
           _id: "$items.productId",
+          name: { $first: "$items.name" },
           totalUnitsSold: { $sum: "$items.quantity" },
           totalRevenue: { $sum: { $multiply: ["$items.quantity", "$items.price"] } },
+          totalMaterialCost: {
+            $sum: { $multiply: ["$items.quantity", { $ifNull: ["$items.cost", 0] }] },
+          },
         },
       },
-      {
-        $lookup: {
-          from: "products",
-          localField: "_id",
-          foreignField: "_id",
-          as: "productDetails",
-        },
-      },
-      { $unwind: "$productDetails" },
       {
         $project: {
           productId: "$_id",
-          name: "$productDetails.name",
+          name: 1,
           totalUnitsSold: 1,
           totalRevenue: 1,
-          totalMaterialCost: {
-            $multiply: ["$totalUnitsSold", "$productDetails.materialCost"],
-          },
+          totalMaterialCost: 1,
           profit: {
-            $subtract: [
-              "$totalRevenue",
-              { $multiply: ["$totalUnitsSold", "$productDetails.materialCost"] },
-            ],
+            $subtract: ["$totalRevenue", "$totalMaterialCost"],
           },
         },
       },
@@ -199,12 +197,7 @@ router.get("/analytics", async (req, res) => {
       }
       salesByDayObj[dateKey].revenue += order.total;
       salesByDayObj[dateKey].orders += 1;
-      order.items.forEach((item) => {
-        if (item.productId && item.productId.materialCost != null) {
-          salesByDayObj[dateKey].profit +=
-            (item.price - item.productId.materialCost) * item.quantity;
-        }
-      });
+      salesByDayObj[dateKey].profit += Number(order.totalProfit || 0);
     });
 
     const salesByDay = Object.values(salesByDayObj).sort(
@@ -226,6 +219,7 @@ router.get("/analytics", async (req, res) => {
     const yearStart = new Date(new Date().getFullYear(), 0, 1);
     const allYearOrders = await Order.find({
       createdAt: { $gte: yearStart },
+      status: { $in: completedOrderStatuses },
     }).populate("items.productId");
 
     const monthlyObj = {};
@@ -238,11 +232,7 @@ router.get("/analytics", async (req, res) => {
       const m = monthNames[new Date(order.createdAt).getMonth()];
       monthlyObj[m].revenue += order.total;
       monthlyObj[m].orders += 1;
-      order.items.forEach((item) => {
-        if (item.productId?.materialCost != null) {
-          monthlyObj[m].profit += (item.price - item.productId.materialCost) * item.quantity;
-        }
-      });
+      monthlyObj[m].profit += Number(order.totalProfit || 0);
     });
     const monthlyRevenue = Object.values(monthlyObj);
 
@@ -257,7 +247,11 @@ router.get("/analytics", async (req, res) => {
     const totalMaterialCost = productProfitStats.reduce(
       (sum, p) => sum + p.totalMaterialCost, 0
     );
-    const totalProfit = productProfitStats.reduce((sum, p) => sum + p.profit, 0);
+    const totalProfitResult = await Order.aggregate([
+      { $match: paidOrderFilter },
+      { $group: { _id: null, total: { $sum: "$totalProfit" } } },
+    ]);
+    const totalProfit = totalProfitResult[0]?.total || 0;
     const estimatedOperatingProfit = totalProfit - totalExpenses;
     const taxReserveRecommendation = estimatedOperatingProfit > 0
       ? estimatedOperatingProfit * 0.25
@@ -273,6 +267,7 @@ router.get("/analytics", async (req, res) => {
       totalCustomers,
       totalTaxCollected,
       totalShippingCollected,
+      totalShippingSpend,
       totalStripeFees,
       totalExpenses,
       totalMaterialCost,
@@ -349,6 +344,7 @@ router.get("/export/sales", async (req, res) => {
       Items: order.items.length,
       Subtotal: order.subtotal?.toFixed(2) || order.total.toFixed(2),
       Shipping: order.shippingCost?.toFixed(2) || "0.00",
+      ShippingLabelCost: order.actualShippingLabelCost?.toFixed(2) || "0.00",
       Tax: order.tax?.toFixed(2) || "0.00",
       Total: order.total.toFixed(2),
       Profit: order.totalProfit?.toFixed(2) || "0.00",
@@ -396,6 +392,7 @@ router.get("/reports/monthly", async (req, res) => {
         $gte: new Date(`${targetYear}-01-01`),
         $lte: new Date(`${targetYear}-12-31`),
       },
+      status: { $in: ["processing", "shipped", "delivered"] },
     }).populate("items.productId");
 
     const monthlyData = {};
@@ -408,12 +405,9 @@ router.get("/reports/monthly", async (req, res) => {
       const month = new Date(order.createdAt).toLocaleString("default", { month: "long" });
       monthlyData[month].revenue += order.total;
       monthlyData[month].orders += 1;
+      monthlyData[month].profit += Number(order.totalProfit || 0);
       order.items.forEach((item) => {
         monthlyData[month].itemsSold += item.quantity;
-        if (item.productId) {
-          monthlyData[month].profit +=
-            (item.price - (item.productId.materialCost || 0)) * item.quantity;
-        }
       });
     });
 

@@ -149,6 +149,8 @@ async function buyLabelForOrder(order) {
     shipment,
     rate,
     transaction,
+    purchasedLabelCost: Number(rate.amount || 0),
+    purchasedLabelCurrency: String(rate.currency || "usd").toLowerCase(),
   };
 }
 

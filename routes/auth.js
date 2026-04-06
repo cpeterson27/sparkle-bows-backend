@@ -8,6 +8,7 @@ const Cart = require("../models/cartModel");
 const Order = require("../models/orderModel");
 const logger = require("../logger");
 const { verifyToken } = require("../middleware/auth");
+const { validateFormProtection } = require("../utils/formProtection");
 
 const router = express.Router();
 
@@ -205,6 +206,15 @@ async function createSessionCookie(user, res) {
 // ------------------------
 router.post("/signup", async (req, res) => {
   try {
+    const protection = validateFormProtection(req.body, { minElapsedMs: 1200 });
+    if (!protection.valid) {
+      logger.warn("Signup blocked by protection", {
+        code: protection.code,
+        ip: req.ip,
+      });
+      return res.status(protection.status).json({ message: protection.error });
+    }
+
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: "Name, email, and password required" });

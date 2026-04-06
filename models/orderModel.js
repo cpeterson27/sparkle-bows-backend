@@ -42,6 +42,8 @@ const orderSchema = new mongoose.Schema(
 
     subtotal: { type: Number, required: true, min: 0 },
     shippingCost: { type: Number, default: 0, min: 0 },
+    actualShippingLabelCost: { type: Number, default: 0, min: 0 },
+    actualShippingLabelCurrency: { type: String, default: "usd" },
     tax: { type: Number, default: 0, min: 0 },
     stripeFee: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },
@@ -98,8 +100,10 @@ orderSchema.pre("save", function (next) {
     this.isModified("items") ||
     this.isModified("subtotal") ||
     this.isModified("shippingCost") ||
+    this.isModified("actualShippingLabelCost") ||
     this.isModified("tax") ||
-    this.isModified("total")
+    this.isModified("total") ||
+    this.isModified("stripeFee")
   ) {
     this.totalCost = parseFloat(
       this.items.reduce((sum, item) => sum + (item.cost || 0) * item.quantity, 0).toFixed(2)
@@ -107,10 +111,15 @@ orderSchema.pre("save", function (next) {
 
     this.total = parseFloat((this.subtotal + this.shippingCost + this.tax).toFixed(2));
 
-    this.stripeFee = parseFloat((this.total * 0.029 + 0.3).toFixed(2));
+    if (!(Number(this.stripeFee) > 0)) {
+      this.stripeFee = parseFloat((this.total * 0.029 + 0.3).toFixed(2));
+    }
 
     this.totalProfit = parseFloat(
-      (this.total - (this.totalCost + this.stripeFee + this.shippingCost)).toFixed(2)
+      (
+        this.total -
+        (this.totalCost + this.stripeFee + Number(this.actualShippingLabelCost || 0))
+      ).toFixed(2)
     );
   }
 

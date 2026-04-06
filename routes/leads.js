@@ -7,6 +7,7 @@ const {
   getVipWelcomeText,
 } = require("../services/emailService");
 const logger = require("../logger");
+const { validateFormProtection } = require("../utils/formProtection");
 
 const router = express.Router();
 
@@ -129,6 +130,15 @@ async function sendKlaviyoEvent(email, firstName = "", source = "website") {
 // POST /api/leads
 // ────────────────────────────────
 router.post("/", async (req, res) => {
+  const protection = validateFormProtection(req.body, { minElapsedMs: 1200 });
+  if (!protection.valid) {
+    logger.warn("Lead form blocked by protection", {
+      code: protection.code,
+      ip: req.ip,
+    });
+    return res.status(protection.status).json({ error: protection.error });
+  }
+
   const { email, firstName = "", source = "website" } = req.body;
 
   if (!email) return res.status(400).json({ error: "Email is required" });

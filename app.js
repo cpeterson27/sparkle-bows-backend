@@ -12,6 +12,7 @@ const {
   refreshTokenLimiter,
   cartLimiter,
   contactLimiter,
+  leadsLimiter,
 } = require("./middleware/rateLimit");
 const userRoutes = require("./routes/user");
 const validationRoutes = require("./routes/validation");
@@ -61,6 +62,12 @@ app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/refresh-token", refreshTokenLimiter);
 app.use("/api/cart", cartLimiter);
 app.use("/api/contact", contactLimiter);
+app.use("/api/leads", (req, res, next) => {
+  if (req.method === "POST") {
+    return leadsLimiter(req, res, next);
+  }
+  return next();
+});
 
 // ------------------------
 // STRIPE WEBHOOK — must come BEFORE body parsers

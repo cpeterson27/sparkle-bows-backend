@@ -1,6 +1,7 @@
 const express = require("express");
 const { sendEmail } = require("../services/emailService");
 const logger = require("../logger");
+const { validateFormProtection } = require("../utils/formProtection");
 
 const router = express.Router();
 
@@ -29,6 +30,15 @@ function getSupportRecipients() {
 }
 
 router.post("/", async (req, res) => {
+  const protection = validateFormProtection(req.body, { minElapsedMs: 1500 });
+  if (!protection.valid) {
+    logger.warn("Contact form blocked by protection", {
+      code: protection.code,
+      ip: req.ip,
+    });
+    return res.status(protection.status).json({ error: protection.error });
+  }
+
   const name = normalizeInput(req.body?.name);
   const email = normalizeInput(req.body?.email).toLowerCase();
   const subject = normalizeInput(req.body?.subject);

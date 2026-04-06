@@ -55,10 +55,18 @@ const contactLimiter = rateLimit({
   message: "Too many contact requests. Please try again later.",
 });
 
+const leadsLimiter = rateLimit({
+  ...baseConfig,
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  message: "Too many signup requests. Please try again later.",
+});
+
 module.exports = {
   generalLimiter,
   authLimiter,
   refreshTokenLimiter,
   cartLimiter,
   contactLimiter,
+  leadsLimiter,
 };

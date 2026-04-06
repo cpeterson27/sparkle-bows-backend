@@ -205,6 +205,8 @@ router.post("/:orderId/shippo-label", verifyToken, verifyAdmin, async (req, res)
     order.shippingLabelUrl = transaction.label_url || "";
     order.trackingNumber = transaction.tracking_number || order.trackingNumber;
     order.trackingUrl = transaction.tracking_url_provider || "";
+    order.actualShippingLabelCost = Number(rate.amount || 0);
+    order.actualShippingLabelCurrency = String(rate.currency || "usd").toLowerCase();
     order.carrier =
       rate.provider ||
       rate.carrier_account ||

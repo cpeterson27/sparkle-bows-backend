@@ -71,6 +71,17 @@ function toMetadataString(value) {
   return value ? String(value) : "";
 }
 
+async function expireExistingPendingOrders({ userId, customerEmail }) {
+  const filter = {
+    status: "pending",
+    ...(userId ? { userId } : { customerEmail }),
+  };
+
+  await Order.updateMany(filter, {
+    $set: { status: "cancelled" },
+  });
+}
+
 router.post("/create-payment-intent", optionalAuth, async (req, res) => {
   try {
     const { customerName, customerEmail, shippingInfo, isGift, giftMessage } =
@@ -152,6 +163,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
         name: product.name,
         quantity: item.quantity,
         price: product.price,
+        cost: Number(product.materialCost || 0),
       });
       taxLineItems.push({
         amount: toCents(product.price * item.quantity),
@@ -243,6 +255,11 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
     );
 
     /* ------------------ CREATE ORDER ------------------ */
+    await expireExistingPendingOrders({
+      userId: userId || null,
+      customerEmail: customerEmail.toLowerCase(),
+    });
+
     const order = await Order.create({
       userId: userId || null,
       customerName,
