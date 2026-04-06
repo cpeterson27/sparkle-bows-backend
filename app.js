@@ -93,6 +93,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/leads", require("./routes/leads"));
 app.use("/api/contact", require("./routes/contact"));
 app.use("/api/validation", validationRoutes);
+app.use("/api/site-settings", require("./routes/siteSettings"));
 
 // ------------------------
 // HEALTH CHECK

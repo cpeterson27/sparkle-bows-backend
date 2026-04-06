@@ -28,6 +28,9 @@ const productSchema = new Schema({
   price: { type: Number, required: true, min: 0 },
   description: { type: String },
   longDescription: { type: String },
+  seoTitle: { type: String, default: "" },
+  seoDescription: { type: String, default: "" },
+  seoKeywords: { type: String, default: "" },
 
   category: {
     type: String,

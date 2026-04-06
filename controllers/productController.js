@@ -59,6 +59,9 @@ exports.createProduct = async (req, res) => {
       price,
       description,
       longDescription,
+      seoTitle,
+      seoDescription,
+      seoKeywords,
       category,        // category from frontend
       images,
       inventory,
@@ -82,6 +85,9 @@ exports.createProduct = async (req, res) => {
       price,
       description,
       longDescription,
+      seoTitle,
+      seoDescription,
+      seoKeywords,
       category,             // save category
       images,
       inventory,
@@ -113,6 +119,9 @@ exports.updateProduct = async (req, res) => {
       price,
       description,
       longDescription,
+      seoTitle,
+      seoDescription,
+      seoKeywords,
       category,        // category to update
       images,
       inventory,
@@ -138,6 +147,9 @@ exports.updateProduct = async (req, res) => {
     product.description = description ?? product.description;
     product.longDescription =
       longDescription ?? product.longDescription;
+    product.seoTitle = seoTitle ?? product.seoTitle;
+    product.seoDescription = seoDescription ?? product.seoDescription;
+    product.seoKeywords = seoKeywords ?? product.seoKeywords;
 
     // Update category if provided
     if (category !== undefined) {
