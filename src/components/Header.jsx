@@ -55,9 +55,11 @@ export default function Header({
           onClick={() => navigate("/")}
           className="group flex items-center gap-4"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-100 via-white to-amber-100 shadow-sm ring-1 ring-rose-100">
-            <div className="h-5 w-5 rounded-full border border-rose-300 bg-gradient-to-br from-rose-300 to-rose-500" />
-          </div>
+        <img
+        src="/favicon.ico"
+        alt="Sparkle Bows Logo"
+        className="h-11 w-11 rounded-2xl object-contain"
+      />
           <div className="text-left">
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-rose-500">
               Sparkle Bows
