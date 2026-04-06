@@ -282,7 +282,7 @@ function SearchInput({ placeholder, value, onChange }) {
 
 // ─── Orders Table ─────────────────────────────────────────────────────────────
 
-function OrdersTable({ orders, loading, onUpdateStatus }) {
+function OrdersTable({ orders, loading, onUpdateStatus, onBuyShippoLabel, shippoLoadingId }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -424,19 +424,44 @@ function OrdersTable({ orders, loading, onUpdateStatus }) {
                     {formatMoney(order.totalProfit ?? order.total ?? 0)}
                   </td>
                   <td className="px-6 py-4">
-                    <select
-                      value={order.status || "pending"}
-                      onChange={(e) =>
-                        onUpdateStatus(order._id, e.target.value)
-                      }
-                      className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="processing">Processing</option>
-                      <option value="shipped">Shipped</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                    <div className="flex flex-col gap-2">
+                      <select
+                        value={order.status || "pending"}
+                        onChange={(e) =>
+                          onUpdateStatus(order._id, e.target.value)
+                        }
+                        className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="processing">Processing</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => onBuyShippoLabel(order._id)}
+                        disabled={shippoLoadingId === order._id}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        {shippoLoadingId === order._id ? "Buying label..." : "Buy Shippo Label"}
+                      </button>
+                      {order.shippingLabelUrl ? (
+                        <a
+                          href={order.shippingLabelUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-medium text-rose-600 hover:text-rose-700"
+                        >
+                          Open label PDF
+                        </a>
+                      ) : null}
+                      {order.trackingNumber ? (
+                        <p className="text-xs text-slate-500">
+                          Tracking: {order.trackingNumber}
+                        </p>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -872,6 +897,7 @@ export default function AdminDashboard({ user, onRefresh }) {
   const [customEnd, setCustomEnd] = useState(toInputDate(new Date()));
   const [exporting, setExporting] = useState("");
   const [monthlyReport, setMonthlyReport] = useState([]);
+  const [shippoLoadingId, setShippoLoadingId] = useState("");
 
   const fetchBows = useCallback(async () => {
     try {
@@ -963,6 +989,21 @@ export default function AdminDashboard({ user, onRefresh }) {
       fetchAnalytics();
     } catch (err) {
       console.error("Failed to update order status:", err);
+    }
+  };
+
+  const handleBuyShippoLabel = async (orderId) => {
+    try {
+      setShippoLoadingId(orderId);
+      await api.post(`/api/orders/${orderId}/shippo-label`);
+      await fetchAnalytics();
+    } catch (err) {
+      console.error("Failed to buy Shippo label:", err);
+      window.alert(
+        err.response?.data?.error || "Could not buy a Shippo label for this order.",
+      );
+    } finally {
+      setShippoLoadingId("");
     }
   };
 
@@ -1415,6 +1456,8 @@ export default function AdminDashboard({ user, onRefresh }) {
             orders={analytics.recentOrders}
             loading={analyticsLoading}
             onUpdateStatus={handleOrderStatusUpdate}
+            onBuyShippoLabel={handleBuyShippoLabel}
+            shippoLoadingId={shippoLoadingId}
           />
         )}
 
