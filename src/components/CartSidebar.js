@@ -35,11 +35,13 @@ export default function CartSidebar({
   const [clientSecret, setClientSecret] = useState(null);
   const [orderId, setOrderId] = useState(null);
   const [itemToRemove, setItemToRemove] = useState(null);
+  const [checkoutTotals, setCheckoutTotals] = useState(null);
 
   const defaultAddress =
     user?.addresses?.find((address) => address.isDefault) ||
     user?.addresses?.[0];
-  const shippingEstimate = cartTotal >= 40 ? 0 : 6.95;
+  const shippingEstimate =
+    cartTotal >= 75 ? 0 : cartTotal >= 35 ? 4.99 : 6.99;
   const estimatedTotal = cartTotal + shippingEstimate;
   const stripeOptions = useMemo(
     () => (clientSecret ? { clientSecret } : null),
@@ -83,6 +85,12 @@ export default function CartSidebar({
 
       setClientSecret(res.data.clientSecret);
       setOrderId(res.data.orderId || null);
+      setCheckoutTotals({
+        subtotal: Number(res.data.subtotal || cartTotal),
+        shippingCost: Number(res.data.shippingCost || 0),
+        tax: Number(res.data.tax || 0),
+        total: Number(res.data.total || estimatedTotal),
+      });
       setShowPayment(true);
     } catch (checkoutError) {
       console.error("Checkout error:", checkoutError);
@@ -157,6 +165,36 @@ export default function CartSidebar({
                   {defaultAddress?.postalCode}
                 </p>
               </div>
+
+              {checkoutTotals ? (
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                    Final total
+                  </p>
+                  <div className="mt-5 space-y-3 text-sm text-slate-600">
+                    <div className="flex items-center justify-between">
+                      <span>Subtotal</span>
+                      <span>${checkoutTotals.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Shipping</span>
+                      <span>
+                        {checkoutTotals.shippingCost === 0
+                          ? "Free"
+                          : `$${checkoutTotals.shippingCost.toFixed(2)}`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Sales tax</span>
+                      <span>${checkoutTotals.tax.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-950">
+                      <span>Total due</span>
+                      <span>${checkoutTotals.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <Elements stripe={stripePromise} options={stripeOptions}>
                 <StripeCheckoutForm
@@ -260,8 +298,12 @@ export default function CartSidebar({
                       {shippingEstimate === 0 ? "Free" : `$${shippingEstimate.toFixed(2)}`}
                     </span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span>Estimated tax</span>
+                    <span>Calculated at checkout</span>
+                  </div>
                   <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-950">
-                    <span>Estimated total</span>
+                    <span>Estimated total before tax</span>
                     <span>${estimatedTotal.toFixed(2)}</span>
                   </div>
                 </div>
