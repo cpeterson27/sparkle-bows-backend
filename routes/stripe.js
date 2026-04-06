@@ -32,6 +32,10 @@ function buildAddress(address = {}) {
   };
 }
 
+function buildShippingName(customerName, shippingInfo = {}) {
+  return shippingInfo.name || customerName;
+}
+
 function buildShipFromDetails() {
   const country = process.env.STRIPE_SHIP_FROM_COUNTRY;
   if (!country) {
@@ -164,6 +168,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
     const totalQty = orderItems.reduce((sum, i) => sum + i.quantity, 0);
     const shippingCost = calculateShipping(subtotal, totalQty);
     const stripeAddress = buildAddress(shippingInfo);
+    const shippingName = buildShippingName(customerName, shippingInfo);
     const shipFromDetails = buildShipFromDetails();
     const taxCalculation = await stripe.tax.calculations.create(
       {
@@ -220,7 +225,7 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
           },
         },
         shipping: {
-          name: customerName,
+          name: shippingName,
           address: stripeAddress,
         },
         receipt_email: customerEmail,
