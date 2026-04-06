@@ -82,7 +82,7 @@ export default function ContactModal({ onClose }) {
             </p>
             <h2 className="mt-4 font-serif text-4xl text-slate-950">How can we help?</h2>
             <p className="mt-3 max-w-lg text-sm leading-7 text-slate-500">
-              Customers can use this form any time for order questions, product help, gift requests, or wholesale inquiries. Your message is sent directly to the support inbox.
+              Contact us for order support, product questions, gifting guidance, or wholesale inquiries. Messages are delivered directly to the Sparkle Bows support inbox.
             </p>
 
             {error ? (
