@@ -35,6 +35,7 @@ import { consumeStoredOAuthResult, hasOAuthParams } from "./auth/oauthState";
 import {
   initializeAnalytics,
   trackAddToCart,
+  trackRemoveFromCart,
   trackPageView,
 } from "./lib/analytics";
 
@@ -204,7 +205,13 @@ export default function App() {
   }, []);
 
   const removeItem = useCallback((id) => {
-    setCart((prev) => prev.filter((i) => i.productId._id !== id));
+    setCart((prev) => {
+      const itemToRemove = prev.find((i) => i.productId._id === id);
+      if (itemToRemove) {
+        trackRemoveFromCart(itemToRemove);
+      }
+      return prev.filter((i) => i.productId._id !== id);
+    });
   }, []);
 
   const updateQuantity = useCallback(

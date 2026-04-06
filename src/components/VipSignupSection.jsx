@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { createLead, getVipStatus } from "../api/leads";
+import { trackGenerateLead } from "../lib/analytics";
 
 export default function VipSignupSection({ user }) {
   const [saving, setSaving] = useState(false);
@@ -34,6 +35,10 @@ export default function VipSignupSection({ user }) {
         email: user.email,
         firstName: user.firstName || "",
         source: "homepage",
+      });
+      trackGenerateLead({
+        formName: "vip_signup",
+        leadType: "vip",
       });
 
       setSuccess(true);

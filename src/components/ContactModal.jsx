@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, Send, Sparkles } from "lucide-react";
 import { sendContactMessage } from "../api/contact";
 import { AuthContext } from "../context/AuthContext";
+import { trackGenerateLead } from "../lib/analytics";
 
 export default function ContactModal({ onClose }) {
   const { user } = useContext(AuthContext);
@@ -31,6 +32,10 @@ export default function ContactModal({ onClose }) {
 
     try {
       await sendContactMessage(formData);
+      trackGenerateLead({
+        formName: "contact_modal",
+        leadType: "contact",
+      });
       setSent(true);
       setTimeout(onClose, 2000);
     } catch (submissionError) {

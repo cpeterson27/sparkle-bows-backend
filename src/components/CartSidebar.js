@@ -17,7 +17,7 @@ import {
 import StripeCheckoutForm from "./StripeCheckoutForm";
 import ConfirmModal from "./ConfirmModal";
 import api from "../api/axios.config";
-import { trackBeginCheckout } from "../lib/analytics";
+import { trackBeginCheckout, trackViewCart } from "../lib/analytics";
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
@@ -72,6 +72,15 @@ export default function CartSidebar({
       country: defaultAddress?.country || "US",
     });
   }, [defaultAddress, user?.name]);
+
+  useEffect(() => {
+    if (cart.length > 0) {
+      trackViewCart(cart, {
+        total: estimatedTotal,
+        cartTotal,
+      });
+    }
+  }, [cart, cartTotal, estimatedTotal]);
 
   const updateShippingField = (field, value) => {
     setShippingForm((current) => ({ ...current, [field]: value }));

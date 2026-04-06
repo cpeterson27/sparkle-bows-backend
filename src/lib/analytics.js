@@ -151,6 +151,55 @@ export function trackBeginCheckout(cart = [], totals = {}) {
   emitEvent("begin_checkout", payload);
 }
 
+export function trackViewCart(cart = [], totals = {}) {
+  if (typeof window === "undefined" || !cart.length) return;
+
+  const payload = {
+    currency: "USD",
+    value: Number(totals.total || totals.grandTotal || totals.cartTotal || 0),
+    items: cart.map((item) => mapItem(item)),
+  };
+
+  emitEvent("view_cart", payload);
+}
+
+export function trackRemoveFromCart(item) {
+  if (typeof window === "undefined" || !item) return;
+
+  const payload = {
+    currency: "USD",
+    value: Number(item.productId?.price || item.price || 0) * Number(item.quantity || 1),
+    items: [mapItem(item)],
+  };
+
+  emitEvent("remove_from_cart", payload);
+}
+
+export function trackLogin(method = "password") {
+  if (typeof window === "undefined") return;
+  emitEvent("login", { method });
+}
+
+export function trackSignUp(method = "password") {
+  if (typeof window === "undefined") return;
+  emitEvent("sign_up", { method });
+}
+
+export function trackGenerateLead({
+  formName,
+  leadType,
+  value = 0,
+  currency = "USD",
+}) {
+  if (typeof window === "undefined") return;
+  emitEvent("generate_lead", {
+    form_name: formName,
+    lead_type: leadType,
+    value: Number(value || 0),
+    currency,
+  });
+}
+
 export function trackPurchase(order) {
   if (typeof window === "undefined" || !order?._id) return;
 

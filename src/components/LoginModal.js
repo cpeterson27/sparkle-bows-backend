@@ -12,6 +12,7 @@ import {
 import api from "../api/axios.config";
 import API_URL from "../config/api";
 import { AuthContext } from "../context/AuthContext";
+import { trackLogin, trackSignUp } from "../lib/analytics";
 
 export default function LoginModal({ onClose, onLogin }) {
   const { loginUser, verifyTwoFactorLogin } = useContext(AuthContext);
@@ -75,6 +76,10 @@ export default function LoginModal({ onClose, onLogin }) {
 
       // Auto-save email for next visit
       localStorage.setItem("savedEmail", formData.email);
+      if (isSignup) {
+        trackSignUp("password");
+      }
+      trackLogin("password");
 
       onLogin?.();
       onClose();
@@ -98,6 +103,7 @@ export default function LoginModal({ onClose, onLogin }) {
         twoFactorToken,
         code: twoFactorCode,
       });
+      trackLogin("2fa");
       onLogin?.();
       onClose();
     } catch (submissionError) {
