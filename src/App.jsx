@@ -48,7 +48,9 @@ export default function App() {
   const handledOauthRef = useRef("");
   const cartLoaded = useRef(false);
   const cartSessionRef = useRef("");
-  const activeCartSession = user?._id || user?.id || user?.email || "guest";
+  const previousUserSessionRef = useRef(null);
+  const currentUserSession = user?._id || user?.id || user?.email || null;
+  const activeCartSession = currentUserSession || "guest";
 
   // ───────────────── Load products once
   useEffect(() => {
@@ -79,6 +81,10 @@ export default function App() {
   useEffect(() => {
     if (authLoading) return;
 
+    const previousUserSession = previousUserSessionRef.current;
+    const didJustLogout = Boolean(previousUserSession && !currentUserSession);
+    previousUserSessionRef.current = currentUserSession;
+
     const sessionKey = activeCartSession;
     cartSessionRef.current = sessionKey;
     cartLoaded.current = false;
@@ -86,6 +92,10 @@ export default function App() {
 
     (async () => {
       try {
+        if (didJustLogout) {
+          await api.put("/api/cart", { items: [] });
+        }
+
         const res = await api.get("/api/cart");
         const cartData = Array.isArray(res.data)
           ? res.data
@@ -103,7 +113,7 @@ export default function App() {
         }
       }
     })();
-  }, [authLoading, activeCartSession]);
+  }, [authLoading, activeCartSession, currentUserSession]);
 
   // ───────────────── Sync cart to backend
   useEffect(() => {

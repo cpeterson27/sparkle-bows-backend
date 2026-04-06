@@ -2,6 +2,36 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "../api/axios.config";
 
+function getStatusTone(status = "") {
+  switch (status) {
+    case "processing":
+      return "bg-blue-100 text-blue-700";
+    case "shipped":
+      return "bg-sky-100 text-sky-700";
+    case "delivered":
+      return "bg-green-100 text-green-700";
+    case "cancelled":
+      return "bg-red-100 text-red-700";
+    default:
+      return "bg-amber-100 text-amber-700";
+  }
+}
+
+function getStatusLabel(status = "") {
+  switch (status) {
+    case "processing":
+      return "Processing";
+    case "shipped":
+      return "Shipped";
+    case "delivered":
+      return "Delivered";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Payment pending";
+  }
+}
+
 export default function OrderDetails() {
   const { orderId } = useParams();
   const [order, setOrder] = useState(null);
@@ -31,9 +61,22 @@ export default function OrderDetails() {
       </Link>
 
       <h2 className="text-3xl font-bold text-pink-600 mb-4">Order #{order._id}</h2>
-      <p className="text-gray-600 mb-6">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusTone(order.status)}`}
+        >
+          {getStatusLabel(order.status)}
+        </span>
+        <p className="text-gray-600">
         Placed on {new Date(order.createdAt).toLocaleString()}
-      </p>
+        </p>
+      </div>
+
+      {order.status === "pending" && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Payment has not been completed for this checkout yet, so this order has not moved into fulfillment.
+        </div>
+      )}
 
       <div className="bg-white shadow rounded-lg p-6 space-y-4">
         {order.items.map((item) => (
