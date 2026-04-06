@@ -30,10 +30,13 @@ import ThankYou from "./components/ThankYou";
 import { createReview, updateReview, deleteReview } from "./api/reviews";
 import api from "./api/axios.config";
 import { AuthContext } from "./context/AuthContext";
+import { useSiteSettings } from "./context/SiteSettingsContext";
 import { consumeStoredOAuthResult, hasOAuthParams } from "./auth/oauthState";
+import { initializeAnalytics, trackPageView } from "./lib/analytics";
 
 export default function App() {
   const { user, loading: authLoading, completeOAuthLogin } = useContext(AuthContext);
+  const { settings } = useSiteSettings();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -167,6 +170,18 @@ export default function App() {
         });
     }
   }, [location.search, completeOAuthLogin, navigate]);
+
+  useEffect(() => {
+    initializeAnalytics(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    trackPageView({
+      title: document.title,
+      path: `${location.pathname}${location.search}`,
+      location: window.location.href,
+    });
+  }, [location.pathname, location.search]);
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {

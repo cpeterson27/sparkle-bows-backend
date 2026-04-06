@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Confetti from "../components/Confetti";
 import Seo from "../components/Seo";
+import { useSiteSettings } from "../context/SiteSettingsContext";
 
 function formatPrice(price) {
   return `$${Number(price || 0).toFixed(2)}`;
@@ -30,6 +31,7 @@ export default function ProductPage({
   user,
   onAddReview,
 }) {
+  const { settings } = useSiteSettings();
   const navigate = useNavigate();
   const { id } = useParams();
   const product = useMemo(
@@ -110,11 +112,13 @@ export default function ProductPage({
   return (
     <div className="bg-[#f7f3ee]">
       <Seo
-        title={product.name}
+        title={product.seoTitle || product.name}
         description={
+          product.seoDescription ||
           product.description ||
           "Premium handmade boutique bow with polished presentation and gift-worthy finishing."
         }
+        keywords={product.seoKeywords}
         type="product"
         image={images[0]?.url}
         jsonLd={{
@@ -122,13 +126,27 @@ export default function ProductPage({
           "@type": "Product",
           name: product.name,
           description:
+            product.seoDescription ||
             product.description ||
             "Premium handmade boutique bow with polished presentation.",
           image: images.map((image) => image.url).filter(Boolean),
+          brand: {
+            "@type": "Brand",
+            name: settings.organizationName || settings.siteName || "Sparkle Bows",
+          },
+          category: product.category || undefined,
+          url: new URL(
+            `/product/${product._id}`,
+            settings.siteUrl || window.location.origin,
+          ).toString(),
           offers: {
             "@type": "Offer",
             priceCurrency: "USD",
             price: Number(product.price || 0).toFixed(2),
+            url: new URL(
+              `/product/${product._id}`,
+              settings.siteUrl || window.location.origin,
+            ).toString(),
             availability:
               inStock
                 ? "https://schema.org/InStock"

@@ -13,6 +13,7 @@ import { ProductCard } from "../components/ProductCard";
 import VipSignupSection from "../components/VipSignupSection";
 import Seo from "../components/Seo";
 import api from "../api/axios.config";
+import { useSiteSettings } from "../context/SiteSettingsContext";
 
 function FadeIn({ children, delay = 0 }) {
   const ref = useRef(null);
@@ -76,6 +77,7 @@ const STYLE_CARDS = [
 
 export default function HomePage({ addToCart }) {
   const { user } = useContext(AuthContext);
+  const { settings } = useSiteSettings();
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [featuredReviews, setFeaturedReviews] = useState([]);
   const { data: allProducts, isLoading } = useProducts({});
@@ -121,15 +123,16 @@ export default function HomePage({ addToCart }) {
     <div className="bg-[#f7f3ee] text-slate-950">
       <Seo
         title="Boutique Handmade Hair Bows"
-        description="Premium handmade boutique hair bows with elevated presentation, thoughtful gifting appeal, and a storefront designed to support serious growth."
+        description={settings.defaultDescription}
         type="website"
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "Store",
-          name: "Sparkle Bows",
+          name: settings.organizationName || settings.siteName || "Sparkle Bows",
           description:
+            settings.defaultDescription ||
             "Premium handmade boutique hair bows with gift-worthy presentation and polished craftsmanship.",
-          url: window.location.href,
+          url: settings.siteUrl || window.location.href,
         }}
       />
       <style>{`

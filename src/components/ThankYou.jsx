@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "../api/axios.config";
+import { trackPurchase } from "../lib/analytics";
 
 export default function ThankYou() {
   const { orderId } = useParams();
@@ -17,6 +18,12 @@ export default function ThankYou() {
     };
     fetchOrder();
   }, [orderId]);
+
+  useEffect(() => {
+    if (order) {
+      trackPurchase(order);
+    }
+  }, [order]);
 
   if (!order) return <p className="text-center my-8">Loading...</p>;
 

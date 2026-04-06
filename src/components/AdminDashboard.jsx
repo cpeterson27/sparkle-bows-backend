@@ -20,11 +20,13 @@ import {
   PiggyBank,
   CalendarDays,
   Download,
+  Globe,
 } from "lucide-react";
 import AdminForm from "./AdminForm";
 import ConfirmModal from "./ConfirmModal";
 import AnalyticsCharts from "./dashboard/AnalyticsCharts";
 import api from "../api/axios.config";
+import SiteSettingsForm from "./SiteSettingsForm";
 
 // ─── Sidebar Navigation ───────────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ function Sidebar({ activeView, setActiveView, lowStockCount }) {
     { id: "add-product", label: "Add Product", icon: PlusCircle },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "finance", label: "Finance", icon: PiggyBank },
+    { id: "site-settings", label: "Site Settings", icon: Globe },
   ];
 
   return (
@@ -1077,6 +1080,7 @@ export default function AdminDashboard({ user, onRefresh }) {
                     (editingBow ? "Edit Product" : "Add Product")}
                   {activeView === "analytics" && "Sales Analytics"}
                   {activeView === "finance" && "Finance And Tax Control"}
+                  {activeView === "site-settings" && "Site Settings"}
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm text-slate-600">
                   {activeView === "dashboard" &&
@@ -1093,6 +1097,8 @@ export default function AdminDashboard({ user, onRefresh }) {
                     "See performance trends, profit signals, and product-level insights to guide growth."}
                   {activeView === "finance" &&
                     "Track expenses, protect cash, and keep clean records for bookkeeping, tax prep, and confident growth."}
+                  {activeView === "site-settings" &&
+                    "Manage the default SEO metadata, brand schema settings, and Google tracking IDs used across the storefront."}
                 </p>
               </div>
 
@@ -1583,6 +1589,23 @@ export default function AdminDashboard({ user, onRefresh }) {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeView === "site-settings" && (
+          <div className="mx-auto max-w-5xl space-y-6">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-500">
+                SEO and Analytics
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-slate-950">
+                Site Settings
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
+                Manage default meta tags, the brand information used in structured data, and your Google Analytics or Tag Manager IDs from one place.
+              </p>
+            </div>
+            <SiteSettingsForm />
           </div>
         )}
 

@@ -25,6 +25,8 @@ import {
   TrendingUp,
   Package,
   Percent,
+  Search,
+  FileText,
 } from "lucide-react";
 import api from "../api/axios.config";
 
@@ -34,6 +36,11 @@ const initialForm = {
   materialCost: "",
   inventory: "",
   category: "",
+  description: "",
+  longDescription: "",
+  seoTitle: "",
+  seoDescription: "",
+  seoKeywords: "",
   newArrival: false,
   bestseller: false,
   featured: false,
@@ -267,6 +274,11 @@ export default function AdminForm({ productToEdit, onSuccess, onCancel }) {
         materialCost: productToEdit.materialCost ?? "",
         inventory: productToEdit.inventory ?? "",
         category: productToEdit.category || "",
+        description: productToEdit.description || "",
+        longDescription: productToEdit.longDescription || "",
+        seoTitle: productToEdit.seoTitle || "",
+        seoDescription: productToEdit.seoDescription || "",
+        seoKeywords: productToEdit.seoKeywords || "",
         newArrival: !!productToEdit.newArrival,
         bestseller: !!productToEdit.bestseller,
         featured: !!productToEdit.featured,
@@ -306,6 +318,11 @@ export default function AdminForm({ productToEdit, onSuccess, onCancel }) {
         materialCost: parseFloat(form.materialCost),
         inventory: parseInt(form.inventory, 10),
         category: form.category,
+        description: form.description.trim(),
+        longDescription: form.longDescription.trim(),
+        seoTitle: form.seoTitle.trim(),
+        seoDescription: form.seoDescription.trim(),
+        seoKeywords: form.seoKeywords.trim(),
         newArrival: form.newArrival,
         bestseller: form.bestseller,
         featured: form.featured,
@@ -392,6 +409,66 @@ export default function AdminForm({ productToEdit, onSuccess, onCancel }) {
             <Field label="Stock Qty" error={errors.inventory}>
               <input type="number" name="inventory" value={form.inventory}
                 onChange={handleChange} className={inp} placeholder="0" />
+            </Field>
+          </div>
+        </SectionCard>
+
+        <SectionCard icon={FileText} title="Descriptions" subtitle="Storefront copy and richer product detail">
+          <div className="grid grid-cols-1 gap-6">
+            <Field label="Short Description">
+              <textarea
+                name="description"
+                value={form.description}
+                onChange={handleChange}
+                rows={4}
+                className={inp}
+                placeholder="A polished summary for product cards and the top of the product page."
+              />
+            </Field>
+            <Field label="Long Description">
+              <textarea
+                name="longDescription"
+                value={form.longDescription}
+                onChange={handleChange}
+                rows={6}
+                className={inp}
+                placeholder="Optional richer copy for craftsmanship, styling notes, gifting details, or materials."
+              />
+            </Field>
+          </div>
+        </SectionCard>
+
+        <SectionCard icon={Search} title="SEO" subtitle="Search title, description, and keywords for this product">
+          <div className="grid grid-cols-1 gap-6">
+            <Field label="SEO Title">
+              <input
+                type="text"
+                name="seoTitle"
+                value={form.seoTitle}
+                onChange={handleChange}
+                className={inp}
+                placeholder="Defaults to the product name if left blank"
+              />
+            </Field>
+            <Field label="SEO Description">
+              <textarea
+                name="seoDescription"
+                value={form.seoDescription}
+                onChange={handleChange}
+                rows={4}
+                className={inp}
+                placeholder="Defaults to the product description if left blank"
+              />
+            </Field>
+            <Field label="SEO Keywords">
+              <textarea
+                name="seoKeywords"
+                value={form.seoKeywords}
+                onChange={handleChange}
+                rows={3}
+                className={inp}
+                placeholder="Comma-separated keywords for this product"
+              />
             </Field>
           </div>
         </SectionCard>

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useSiteSettings } from "../context/SiteSettingsContext";
 
 function upsertMeta(selector, attributes) {
   let element = document.head.querySelector(selector);
@@ -31,15 +32,24 @@ export default function Seo({
   keywords,
   jsonLd,
 }) {
+  const { settings } = useSiteSettings();
+
   useEffect(() => {
+    const siteName = settings.siteName || "Sparkle Bows";
+    const siteUrl = settings.siteUrl || window.location.origin;
     const pageTitle = title
-      ? `${title} | Sparkle Bows`
-      : "Sparkle Bows | Premium Handmade Boutique Hair Bows";
+      ? `${title} | ${siteName}`
+      : settings.defaultTitle || "Sparkle Bows | Premium Handmade Boutique Hair Bows";
     const pageDescription =
       description ||
+      settings.defaultDescription ||
       "Premium handmade boutique bows with polished presentation, gift-worthy packaging, and a storefront designed for serious growth.";
-    const url = window.location.href;
-    const imageUrl = image || `${window.location.origin}/logo192.png`;
+    const url = new URL(
+      `${window.location.pathname}${window.location.search}`,
+      siteUrl,
+    ).toString();
+    const imageUrl =
+      image || settings.defaultOgImage || `${window.location.origin}/logo192.png`;
 
     document.title = pageTitle;
 
@@ -51,6 +61,7 @@ export default function Seo({
       name: "keywords",
       content:
         keywords ||
+        settings.defaultKeywords ||
         "boutique bows, handmade hair bows, girls hair accessories, premium bow shop, sparkle bows",
     });
     upsertMeta('meta[property="og:title"]', {
@@ -105,7 +116,20 @@ export default function Seo({
         script.remove();
       }
     };
-  }, [description, image, jsonLd, keywords, title, type]);
+  }, [
+    description,
+    image,
+    jsonLd,
+    keywords,
+    settings.defaultDescription,
+    settings.defaultKeywords,
+    settings.defaultOgImage,
+    settings.defaultTitle,
+    settings.siteName,
+    settings.siteUrl,
+    title,
+    type,
+  ]);
 
   return null;
 }

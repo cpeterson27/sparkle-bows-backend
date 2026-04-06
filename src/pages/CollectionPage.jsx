@@ -3,9 +3,11 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import Seo from "../components/Seo";
+import { useSiteSettings } from "../context/SiteSettingsContext";
 import { COLLECTIONS, getCollectionBySlug } from "../data/collections";
 
 export default function CollectionPage({ products = [], addToCart }) {
+  const { settings } = useSiteSettings();
   const { slug } = useParams();
   const collection = getCollectionBySlug(slug);
 
@@ -28,7 +30,10 @@ export default function CollectionPage({ products = [], addToCart }) {
           "@type": "CollectionPage",
           name: collection.title,
           description: collection.description,
-          url: window.location.href,
+          url: new URL(
+            `/collections/${collection.slug}`,
+            settings.siteUrl || window.location.origin,
+          ).toString(),
         }}
       />
 
