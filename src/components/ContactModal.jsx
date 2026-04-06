@@ -1,18 +1,28 @@
-import React, { useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Send, Sparkles } from "lucide-react";
 import { sendContactMessage } from "../api/contact";
+import { AuthContext } from "../context/AuthContext";
 
 export default function ContactModal({ onClose }) {
+  const { user } = useContext(AuthContext);
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
+    name: user?.name || "",
+    email: user?.email || "",
     subject: "",
     message: "",
   });
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setFormData((current) => ({
+      ...current,
+      name: user?.name || current.name,
+      email: user?.email || current.email,
+    }));
+  }, [user?.name, user?.email]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -95,7 +105,8 @@ export default function ContactModal({ onClose }) {
                       setFormData({ ...formData, name: e.target.value })
                     }
                     className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                    placeholder="Cassandra Peterson"
+                    placeholder="Your full name"
+                    autoComplete="name"
                   />
                 </label>
 
@@ -111,7 +122,7 @@ export default function ContactModal({ onClose }) {
                       setFormData({ ...formData, email: e.target.value })
                     }
                     className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                    placeholder="sparkle@example.com"
+                    placeholder="you@example.com"
                     autoComplete="email"
                   />
                 </label>
