@@ -39,7 +39,8 @@ export default function LoginModal({ onClose, onLogin }) {
   }, []);
 
   const redirectToProvider = (provider) => {
-    window.location.href = `${oauthBaseUrl}/api/auth/${provider}/start`;
+    const baseUrl = oauthBaseUrl.replace(/\/$/, "");
+    window.location.assign(`${baseUrl}/api/auth/${provider}/start`);
   };
 
   const handleCredentialsSubmit = async (event) => {

@@ -9,21 +9,22 @@ export default function OAuthCallbackPage() {
   const [message, setMessage] = useState("Finishing sign-in...");
 
   useEffect(() => {
-    const accessToken = params.get("accessToken");
+    const accessToken = params.get("accessToken") || params.get("token");
     const provider = params.get("provider");
-    const error = params.get("error");
+    const error = params.get("error") || params.get("oauth_error");
+    const status = params.get("oauth");
 
     if (error) {
       setMessage(
         provider === "google"
-          ? "Google sign-in is not fully configured yet."
+          ? "Google sign-in could not be completed. Please try again."
           : "Sign-in could not be completed.",
       );
       return;
     }
 
-    if (!accessToken) {
-      setMessage("Missing sign-in token.");
+    if (!accessToken && status !== "success") {
+      setMessage("Missing sign-in session.");
       return;
     }
 
@@ -33,7 +34,7 @@ export default function OAuthCallbackPage() {
         navigate("/", { replace: true });
       } catch (completionError) {
         console.error("OAuth completion failed:", completionError);
-        setMessage("We could not finish your sign-in.");
+        setMessage("We could not finish your sign-in. Please try again.");
       }
     })();
   }, [completeOAuthLogin, navigate, params]);

@@ -66,7 +66,10 @@ export const AuthProvider = ({ children }) => {
   // On mount: skip tryRefresh if this is an OAuth redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const isOAuthRedirect = params.get("oauth") === "success";
+    const isOAuthRedirect =
+      window.location.pathname === "/auth/callback" ||
+      params.get("oauth") === "success" ||
+      params.has("oauth_error");
     if (isOAuthRedirect) {
       setLoading(false);
     } else {
@@ -96,8 +99,13 @@ export const AuthProvider = ({ children }) => {
       });
       return applyAuthPayload({ ...data, accessToken: oauthToken });
     }
-    await tryRefresh();
-  }, [applyAuthPayload, tryRefresh]);
+    const { data } = await api.post(
+      "/api/auth/refresh-token",
+      {},
+      { withCredentials: true },
+    );
+    return applyAuthPayload(data);
+  }, [applyAuthPayload]);
 
   const logoutUser = async () => {
     try {
