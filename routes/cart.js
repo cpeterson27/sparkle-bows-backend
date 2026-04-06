@@ -24,6 +24,31 @@ const guestCookieOptions = {
   maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
 };
 
+function normalizeIncomingItems(items) {
+  if (!Array.isArray(items)) return [];
+
+  return items.filter(
+    (item) =>
+      item &&
+      item.productId &&
+      typeof item.quantity === "number" &&
+      item.quantity > 0,
+  );
+}
+
+async function sanitizeCartDocument(cart) {
+  if (!cart) return cart;
+
+  const validItems = cart.items.filter((item) => item?.productId?._id || item?.productId);
+  if (validItems.length !== cart.items.length) {
+    cart.items = validItems;
+    await cart.save();
+    await cart.populate("items.productId");
+  }
+
+  return cart;
+}
+
 // ------------------------
 // GET current cart (guest or logged in) + totals
 // This route intentionally supports both authenticated and guest sessions.
@@ -64,6 +89,8 @@ router.get("/", optionalAuth, async (req, res) => {
       cart = await cart.populate("items.productId");
     }
 
+    cart = await sanitizeCartDocument(cart);
+
     // ------------------------
     // Calculate totals
     // ------------------------
@@ -98,7 +125,7 @@ router.get("/", optionalAuth, async (req, res) => {
 // ------------------------
 router.put("/", optionalAuth, async (req, res) => {
   try {
-    const items = req.body.items;
+    const items = normalizeIncomingItems(req.body.items);
     let updatedCart;
 
     if (req.user) {
@@ -120,6 +147,8 @@ router.put("/", optionalAuth, async (req, res) => {
         { new: true, upsert: true }
       ).populate("items.productId");
     }
+
+    updatedCart = await sanitizeCartDocument(updatedCart);
 
     // ------------------------
     // Calculate totals
