@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import {
   ArrowRight,
+  Gift,
   Minus,
   PackageCheck,
   Plus,
@@ -36,6 +37,17 @@ export default function CartSidebar({
   const [orderId, setOrderId] = useState(null);
   const [itemToRemove, setItemToRemove] = useState(null);
   const [checkoutTotals, setCheckoutTotals] = useState(null);
+  const [isGift, setIsGift] = useState(false);
+  const [giftMessage, setGiftMessage] = useState("");
+  const [shippingForm, setShippingForm] = useState({
+    name: user?.name || "",
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "US",
+  });
 
   const defaultAddress =
     user?.addresses?.find((address) => address.isDefault) ||
@@ -48,6 +60,22 @@ export default function CartSidebar({
     [clientSecret],
   );
 
+  useEffect(() => {
+    setShippingForm({
+      name: defaultAddress?.name || user?.name || "",
+      line1: defaultAddress?.line1 || "",
+      line2: defaultAddress?.line2 || "",
+      city: defaultAddress?.city || "",
+      state: defaultAddress?.state || "",
+      postalCode: defaultAddress?.postalCode || "",
+      country: defaultAddress?.country || "US",
+    });
+  }, [defaultAddress, user?.name]);
+
+  const updateShippingField = (field, value) => {
+    setShippingForm((current) => ({ ...current, [field]: value }));
+  };
+
   const handleCheckout = async () => {
     setLoading(true);
     setError("");
@@ -58,8 +86,14 @@ export default function CartSidebar({
       return;
     }
 
-    if (!defaultAddress?.line1) {
-      setError("Add a default shipping address in your account settings before checkout.");
+    if (
+      !shippingForm.name ||
+      !shippingForm.line1 ||
+      !shippingForm.city ||
+      !shippingForm.state ||
+      !shippingForm.postalCode
+    ) {
+      setError("Enter the full shipping details for the recipient before checkout.");
       setLoading(false);
       return;
     }
@@ -69,13 +103,16 @@ export default function CartSidebar({
         customerName: user.name,
         customerEmail: user.email,
         shippingInfo: {
-          line1: defaultAddress.line1,
-          line2: defaultAddress.line2 || "",
-          city: defaultAddress.city,
-          state: defaultAddress.state,
-          postalCode: defaultAddress.postalCode,
-          country: defaultAddress.country || "US",
+          name: shippingForm.name,
+          line1: shippingForm.line1,
+          line2: shippingForm.line2 || "",
+          city: shippingForm.city,
+          state: shippingForm.state,
+          postalCode: shippingForm.postalCode,
+          country: shippingForm.country || "US",
         },
+        isGift,
+        giftMessage: giftMessage.trim(),
       });
 
       if (!res.data?.clientSecret) {
@@ -156,15 +193,26 @@ export default function CartSidebar({
                   Shipping to
                 </p>
                 <p className="mt-3 text-sm leading-7 text-slate-600">
-                  {user?.name}
+                  {shippingForm.name}
                   <br />
-                  {defaultAddress?.line1}
-                  {defaultAddress?.line2 ? `, ${defaultAddress.line2}` : ""}
+                  {shippingForm.line1}
+                  {shippingForm.line2 ? `, ${shippingForm.line2}` : ""}
                   <br />
-                  {defaultAddress?.city}, {defaultAddress?.state}{" "}
-                  {defaultAddress?.postalCode}
+                  {shippingForm.city}, {shippingForm.state}{" "}
+                  {shippingForm.postalCode}
                 </p>
               </div>
+
+              {isGift && giftMessage ? (
+                <div className="rounded-[32px] border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
+                    Gift message
+                  </p>
+                  <p className="mt-3 text-sm leading-7 text-slate-700">
+                    {giftMessage}
+                  </p>
+                </div>
+              ) : null}
 
               {checkoutTotals ? (
                 <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -210,6 +258,170 @@ export default function CartSidebar({
             </div>
           ) : (
             <div className="space-y-6">
+              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <input
+                    id="gift-order"
+                    type="checkbox"
+                    checked={isGift}
+                    onChange={(event) => setIsGift(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-rose-500 focus:ring-rose-400"
+                  />
+                  <div>
+                    <label
+                      htmlFor="gift-order"
+                      className="inline-flex items-center gap-2 text-sm font-semibold text-slate-950"
+                    >
+                      <Gift className="h-4 w-4 text-rose-500" />
+                      This order is a gift
+                    </label>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">
+                      Send the bow directly to the recipient and include a gift note for the package.
+                    </p>
+                  </div>
+                </div>
+
+                {isGift ? (
+                  <div className="mt-5">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">
+                        Gift note
+                      </span>
+                      <textarea
+                        value={giftMessage}
+                        onChange={(event) => setGiftMessage(event.target.value)}
+                        maxLength={250}
+                        className="h-28 w-full resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                        placeholder="Add a short message for the recipient."
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                  Shipping address
+                </p>
+                <p className="mt-3 text-sm leading-7 text-slate-500">
+                  Review the shipping details below. For gifts, enter the recipient’s name and delivery address here.
+                </p>
+
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Recipient name
+                    </span>
+                    <input
+                      type="text"
+                      value={shippingForm.name}
+                      onChange={(event) =>
+                        updateShippingField("name", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="Recipient full name"
+                      autoComplete="shipping name"
+                    />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Address line 1
+                    </span>
+                    <input
+                      type="text"
+                      value={shippingForm.line1}
+                      onChange={(event) =>
+                        updateShippingField("line1", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="Street address"
+                      autoComplete="shipping address-line1"
+                    />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Address line 2
+                    </span>
+                    <input
+                      type="text"
+                      value={shippingForm.line2}
+                      onChange={(event) =>
+                        updateShippingField("line2", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="Apartment, suite, unit, etc. (optional)"
+                      autoComplete="shipping address-line2"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      City
+                    </span>
+                    <input
+                      type="text"
+                      value={shippingForm.city}
+                      onChange={(event) =>
+                        updateShippingField("city", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="City"
+                      autoComplete="shipping address-level2"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      State
+                    </span>
+                    <input
+                      type="text"
+                      value={shippingForm.state}
+                      onChange={(event) =>
+                        updateShippingField("state", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="State"
+                      autoComplete="shipping address-level1"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      ZIP code
+                    </span>
+                    <input
+                      type="text"
+                      value={shippingForm.postalCode}
+                      onChange={(event) =>
+                        updateShippingField("postalCode", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="ZIP code"
+                      autoComplete="shipping postal-code"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Country
+                    </span>
+                    <input
+                      type="text"
+                      value={shippingForm.country}
+                      onChange={(event) =>
+                        updateShippingField("country", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="US"
+                      autoComplete="shipping country"
+                    />
+                  </label>
+                </div>
+              </div>
+
               <div className="space-y-4">
                 {cart.map((item) => (
                   <article
