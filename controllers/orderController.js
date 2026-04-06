@@ -2,90 +2,43 @@
 const Order = require("../models/orderModel");
 const Cart = require("../models/cartModel");
 const Product = require("../models/productModel");
-const nodemailer = require("nodemailer");
+const {
+  sendOrderConfirmationEmail,
+  sendOwnerNotification,
+} = require("../services/emailService");
 const logger = require("../logger");
-
-// -------------------------
-// Email Transporter
-// -------------------------
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,       // SSL port
-  secure: true,    // use SSL
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
 
 // -------------------------
 // Send Order Emails with Shipping Address & Gift Message
 // -------------------------
 async function sendOrderEmails(order) {
   try {
-    const itemsText = order.items
-      .map(i => `${i.name} x${i.quantity} - $${(i.price * i.quantity).toFixed(2)}`)
-      .join("\n");
-
-    const shippingText = order.shippingAddress?.line1
-      ? `
-        <p><strong>Shipping Address:</strong><br/>
-        ${order.shippingAddress.name || order.customerName}<br/>
-        ${order.shippingAddress.line1}<br/>
-        ${order.shippingAddress.line2 ? `${order.shippingAddress.line2}<br/>` : ""}
-        ${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.postalCode}<br/>
-        ${order.shippingAddress.country || "US"}
-        </p>
-      `
-      : "";
-
-    const giftSection = order.isGift
-      ? `
-        <div style="background: #fff0f5; border: 2px solid #ff69b4; border-radius: 8px; padding: 16px; margin: 16px 0;">
-          <p style="margin: 0; color: #ff1493; font-weight: bold;">🎁 This is a Gift Order</p>
-          ${order.giftMessage ? `<p style="margin: 8px 0 0 0; font-style: italic;">"${order.giftMessage}"</p>` : ""}
-        </div>
-      `
-      : "";
-
-    // Customer Email
-    const customerEmail = {
-      from: `"Sparkle & Twirl Bows" <${process.env.GMAIL_USER}>`,
-      to: order.customerEmail,
-      subject: `Order Confirmation #${order._id.toString().slice(-8)}`,
-      html: `
-        <h1>Thank you for your order! 🎀</h1>
-        <p>Hi ${order.customerName},</p>
-        <p>Your order has been received:</p>
-        <pre>${itemsText}</pre>
-        <p><strong>Total: $${order.total.toFixed(2)}</strong></p>
-        ${giftSection}
-        ${shippingText}
-        <p>Track your order: <a href="${process.env.FRONTEND_URL}/thank-you/${order._id}">View Order</a></p>
-      `,
-    };
-
-    // Owner/Admin Email
-    const ownerEmail = {
-      from: `"Bow Shop Notification" <${process.env.GMAIL_USER}>`,
-      to: process.env.OWNER_EMAIL || process.env.GMAIL_USER,
-      subject: `NEW ORDER #${order._id.toString().slice(-8)}`,
-      html: `
-        <h1>New Order Received 🎉</h1>
-        <p>Customer: ${order.customerName} (${order.customerEmail})</p>
-        <pre>${itemsText}</pre>
-        <p><strong>Total: $${order.total.toFixed(2)}</strong></p>
-        ${giftSection}
-        ${shippingText}
-      `,
-    };
-
-    await Promise.all([
-      transporter.sendMail(customerEmail),
-      transporter.sendMail(ownerEmail),
+    const [customerResult, ownerResult] = await Promise.all([
+      sendOrderConfirmationEmail(order),
+      sendOwnerNotification(order),
     ]);
 
-    logger.info("Order emails sent", { orderId: order._id });
+    if (!customerResult?.success) {
+      logger.error("Customer order email failed", {
+        orderId: order._id,
+        error: customerResult?.error,
+      });
+    }
+
+    if (!ownerResult?.success) {
+      logger.error("Owner order email failed", {
+        orderId: order._id,
+        error: ownerResult?.error,
+      });
+    }
+
+    if (customerResult?.success || ownerResult?.success) {
+      logger.info("Order emails sent", {
+        orderId: order._id,
+        customerProvider: customerResult?.provider || null,
+        ownerProvider: ownerResult?.provider || null,
+      });
+    }
   } catch (err) {
     logger.error("Failed to send order emails", { error: err.message });
   }

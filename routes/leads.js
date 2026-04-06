@@ -138,6 +138,7 @@ router.post("/", async (req, res) => {
   try {
     // 1️⃣ Find or create lead
     let lead = await Lead.findOne({ email: normalizedEmail });
+    const wasVipSubscribed = Boolean(lead?.vipSubscribed);
     if (!lead) {
       lead = await Lead.create({
         email: normalizedEmail,
@@ -162,7 +163,7 @@ router.post("/", async (req, res) => {
     // 3️⃣ Async tasks: list add, event, owner + subscriber emails
     (async () => {
       try {
-        const listAddPromise = lead.vipSubscribed
+        const listAddPromise = wasVipSubscribed
           ? Promise.resolve(false)
           : addToKlaviyoList(lead.email, firstName || lead.firstName);
 
@@ -399,6 +400,7 @@ router.post("/test-email", async (req, res) => {
 
   try {
     const result = await sendVipNotification({
+      to: email,
       email,
       firstName: "Test",
       source: "test-endpoint",

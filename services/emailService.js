@@ -1,14 +1,31 @@
 // services/emailService.js
 const { Resend } = require("resend");
+const nodemailer = require("nodemailer");
 const logger = require("../logger");
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 const defaultFromEmail =
   process.env.EMAIL_FROM || "Sparkle Bows <hello@mail.sparklebows.shop>";
 const supportEmail = process.env.OWNER_EMAIL || "sparklebowshop@gmail.com";
 const unsubscribeMailto = `mailto:${supportEmail}?subject=${encodeURIComponent(
   "Unsubscribe me from Sparkle Bows VIP",
 )}`;
+const frontendUrl = process.env.FRONTEND_URL || "https://www.sparklebows.shop";
+
+const smtpTransport =
+  process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
+    ? nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_APP_PASSWORD,
+        },
+      })
+    : null;
 
 // -------------------------
 // HELPERS
@@ -27,22 +44,53 @@ const formatDate = (date) =>
 // -------------------------
 async function sendEmail({ to, subject, html, text, from, replyTo }) {
   try {
-    const { data, error } = await resend.emails.send({
-      from: from || defaultFromEmail,
+    if (resend) {
+      const { data, error } = await resend.emails.send({
+        from: from || defaultFromEmail,
+        to,
+        subject,
+        html,
+        text,
+        reply_to: replyTo,
+      });
+
+      if (!error) {
+        logger.info("Email sent via Resend", { to, subject, id: data.id });
+        return { success: true, provider: "resend", data };
+      }
+
+      logger.error("Resend error", { error, to, subject });
+
+      if (!smtpTransport) {
+        return { success: false, error };
+      }
+
+      logger.warn("Falling back to SMTP after Resend failure", { to, subject });
+    }
+
+    if (!smtpTransport) {
+      return {
+        success: false,
+        error: "No email provider configured",
+      };
+    }
+
+    const smtpInfo = await smtpTransport.sendMail({
+      from: from || process.env.GMAIL_USER || supportEmail,
       to,
       subject,
       html,
       text,
-      reply_to: replyTo,
+      replyTo,
     });
 
-    if (error) {
-      logger.error("Resend error", { error, to, subject });
-      return { success: false, error };
-    }
+    logger.info("Email sent via SMTP fallback", {
+      to,
+      subject,
+      id: smtpInfo.messageId,
+    });
 
-    logger.info("Email sent via Resend", { to, subject, id: data.id });
-    return { success: true, data };
+    return { success: true, provider: "smtp", data: smtpInfo };
   } catch (err) {
     logger.error("Failed to send email", { error: err.message, to, subject });
     return { success: false, error: err.message };
@@ -131,7 +179,7 @@ function getOrderConfirmationHTML(order) {
         </tr>
         <tr>
           <td style="padding:0 30px 40px 30px;text-align:center;">
-            <a href="${process.env.FRONTEND_URL}/orders/${order._id}" style="display:inline-block;background:linear-gradient(135deg,#ec4899 0%,#8b5cf6 100%);color:white;text-decoration:none;padding:16px 32px;border-radius:24px;font-weight:bold;font-size:16px;">View Order Details</a>
+            <a href="${frontendUrl}/orders/${order._id}" style="display:inline-block;background:linear-gradient(135deg,#ec4899 0%,#8b5cf6 100%);color:white;text-decoration:none;padding:16px 32px;border-radius:24px;font-weight:bold;font-size:16px;">View Order Details</a>
           </td>
         </tr>
         <tr>
@@ -169,7 +217,7 @@ function getVipLeadHTML(lead) {
             <p style="margin:0;color:#6b21a8;"><strong>Source:</strong> ${lead.source || "website"}</p>
           </div>
           <div style="text-align:center;margin-top:24px;">
-            <a href="${process.env.FRONTEND_URL}/admin" style="display:inline-block;background:linear-gradient(135deg,#ec4899 0%,#8b5cf6 100%);color:white;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:bold;">View in Admin Panel</a>
+            <a href="${frontendUrl}/admin" style="display:inline-block;background:linear-gradient(135deg,#ec4899 0%,#8b5cf6 100%);color:white;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:bold;">View in Admin Panel</a>
           </div>
         </td></tr>
         <tr><td style="background-color:#f9fafb;padding:16px;text-align:center;border-top:1px solid #e5e7eb;">
@@ -191,7 +239,7 @@ function getVipLeadText(lead) {
     `Name: ${lead.firstName || "Not provided"}`,
     `Source: ${lead.source || "website"}`,
     "",
-    `View in Admin Panel: ${process.env.FRONTEND_URL}/admin`,
+    `View in Admin Panel: ${frontendUrl}/admin`,
   ].join("\n");
 }
 
@@ -230,7 +278,7 @@ function getVipWelcomeHTML({ firstName = "" }) {
               We’ll keep it thoughtful and low-volume. No spam, and you can unsubscribe any time.
             </p>
             <div style="text-align:center;">
-              <a href="${process.env.FRONTEND_URL}" style="display:inline-block;background-color:#0f172a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:9999px;font-weight:700;font-size:15px;">Visit Sparkle Bows</a>
+              <a href="${frontendUrl}" style="display:inline-block;background-color:#0f172a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:9999px;font-weight:700;font-size:15px;">Visit Sparkle Bows</a>
             </div>
           </td>
         </tr>
@@ -259,7 +307,7 @@ function getVipWelcomeText({ firstName = "" }) {
     "- Exclusive subscriber discounts",
     "",
     "Visit the shop:",
-    `${process.env.FRONTEND_URL}`,
+    `${frontendUrl}`,
     "",
     `Questions? Reply to this email or contact ${supportEmail}.`,
     `To unsubscribe from VIP emails, email ${supportEmail} with the subject: Unsubscribe me from Sparkle Bows VIP`,
@@ -306,6 +354,68 @@ async function sendVipNotification({
   });
 }
 
+function getTrackingEmailHTML(order) {
+  const carrier = order.carrier || "USPS";
+  const trackingNumber = order.trackingNumber || "Pending";
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Your order has shipped</title></head>
+<body style="margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#fff7fb;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fff7fb;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #fbcfe8;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#ec4899 0%,#fb7185 55%,#f59e0b 100%);padding:32px 28px;text-align:center;">
+            <p style="margin:0 0 10px 0;color:#fff1f2;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">Sparkle Bows Shipping Update</p>
+            <h1 style="margin:0;color:#ffffff;font-size:30px;line-height:1.2;">Your bows are on the way.</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 28px;color:#334155;">
+            <p style="margin:0 0 16px 0;font-size:16px;line-height:1.7;">Hi ${order.customerName || "there"},</p>
+            <p style="margin:0 0 16px 0;font-size:16px;line-height:1.7;">
+              Your Sparkle Bows order has shipped. Here are your tracking details:
+            </p>
+            <div style="background-color:#fff1f2;border:1px solid #fecdd3;border-radius:14px;padding:20px 22px;margin:24px 0;">
+              <p style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#9f1239;letter-spacing:0.04em;text-transform:uppercase;">Tracking details</p>
+              <p style="margin:0 0 6px 0;color:#475569;"><strong>Carrier:</strong> ${carrier}</p>
+              <p style="margin:0;color:#475569;"><strong>Tracking number:</strong> ${trackingNumber}</p>
+            </div>
+            <div style="text-align:center;">
+              <a href="${frontendUrl}/orders/${order._id}" style="display:inline-block;background-color:#0f172a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:9999px;font-weight:700;font-size:15px;">View your order</a>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function getTrackingEmailText(order) {
+  return [
+    `Hi ${order.customerName || "there"},`,
+    "",
+    "Your Sparkle Bows order has shipped.",
+    `Carrier: ${order.carrier || "USPS"}`,
+    `Tracking number: ${order.trackingNumber || "Pending"}`,
+    "",
+    `View your order: ${frontendUrl}/orders/${order._id}`,
+  ].join("\n");
+}
+
+async function sendTrackingEmail(order) {
+  return sendEmail({
+    to: order.customerEmail,
+    subject: `Your Sparkle Bows order has shipped`,
+    html: getTrackingEmailHTML(order),
+    text: getTrackingEmailText(order),
+  });
+}
+
 // -------------------------
 // EXPORTS
 // -------------------------
@@ -313,10 +423,13 @@ module.exports = {
   sendEmail,
   sendOrderConfirmationEmail,
   sendOwnerNotification,
+  sendTrackingEmail,
   sendVipNotification,
   formatCurrency,
   formatDate,
   getOrderConfirmationHTML,
+  getTrackingEmailHTML,
+  getTrackingEmailText,
   getVipLeadHTML,
   getVipLeadText,
   getVipWelcomeHTML,
