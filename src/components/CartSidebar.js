@@ -56,6 +56,7 @@ export default function CartSidebar({
   const shippingEstimate =
     cartTotal >= 75 ? 0 : cartTotal >= 35 ? 4.99 : 6.99;
   const estimatedTotal = cartTotal + shippingEstimate;
+  const validCartItems = cart.filter((item) => item?.productId?._id);
   const stripeOptions = useMemo(
     () => (clientSecret ? { clientSecret } : null),
     [clientSecret],
@@ -174,7 +175,7 @@ export default function CartSidebar({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
-          {cart.length === 0 ? (
+          {validCartItems.length === 0 ? (
             <div className="rounded-[32px] border border-dashed border-slate-300 bg-white p-10 text-center">
               <ShoppingBag className="mx-auto h-12 w-12 text-slate-300" />
               <h3 className="mt-4 font-serif text-3xl text-slate-950">
@@ -429,7 +430,7 @@ export default function CartSidebar({
               </div>
 
               <div className="space-y-4">
-                {cart.map((item) => (
+                {validCartItems.map((item) => (
                   <article
                     key={item.productId._id}
                     className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm"
