@@ -72,6 +72,11 @@ const orderSchema = new mongoose.Schema(
 
     trackingNumber: { type: String, default: "" },
     carrier: { type: String, default: "" },
+    trackingUrl: { type: String, default: "" },
+    shippingLabelUrl: { type: String, default: "" },
+    shippoShipmentId: { type: String, default: "" },
+    shippoRateId: { type: String, default: "" },
+    shippoTransactionId: { type: String, default: "" },
 
     stripePaymentIntentId: { type: String },
     stripeChargeId: { type: String },

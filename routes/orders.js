@@ -4,6 +4,7 @@ const router = express.Router();
 const Order = require("../models/orderModel");
 const { verifyToken, verifyAdmin } = require("../middleware/auth");
 const { sendTrackingEmail } = require("../services/emailService");
+const { buyLabelForOrder } = require("../services/shippoService");
 const logger = require("../logger");
 
 // -------------------------
@@ -185,6 +186,54 @@ router.patch("/:orderId/tracking", verifyToken, verifyAdmin, async (req, res) =>
   } catch (err) {
     logger.error("Add tracking number failed", { error: err.message });
     res.status(500).json({ error: "Could not add tracking number" });
+  }
+});
+
+router.post("/:orderId/shippo-label", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId).populate("items.productId");
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const { shipment, rate, transaction } = await buyLabelForOrder(order);
+
+    order.shippoShipmentId = shipment.object_id || "";
+    order.shippoRateId = rate.object_id || "";
+    order.shippoTransactionId = transaction.object_id || "";
+    order.shippingLabelUrl = transaction.label_url || "";
+    order.trackingNumber = transaction.tracking_number || order.trackingNumber;
+    order.trackingUrl = transaction.tracking_url_provider || "";
+    order.carrier =
+      rate.provider ||
+      rate.carrier_account ||
+      order.carrier ||
+      "Shippo";
+    order.status = "shipped";
+
+    await order.save();
+
+    try {
+      await sendTrackingEmail(order);
+    } catch (emailErr) {
+      logger.error("Failed to send Shippo tracking email", {
+        orderId: order._id,
+        error: emailErr.message,
+      });
+    }
+
+    res.json({
+      order,
+      labelUrl: order.shippingLabelUrl,
+      trackingUrl: order.trackingUrl,
+    });
+  } catch (err) {
+    logger.error("Shippo label purchase failed", {
+      error: err.message,
+      orderId: req.params.orderId,
+    });
+    res.status(400).json({ error: err.message || "Could not purchase Shippo label" });
   }
 });
 
