@@ -169,8 +169,15 @@ function serializeUser(user) {
 
 // ✅ Only used for error redirects now
 function buildFrontendErrorRedirect(error, provider = "") {
-  const redirectUrl = new URL("/", FRONTEND_URL);
+  const redirectUrl = new URL("/auth/callback", FRONTEND_URL);
   redirectUrl.searchParams.set("oauth_error", error);
+  if (provider) redirectUrl.searchParams.set("provider", provider);
+  return redirectUrl.toString();
+}
+
+function buildFrontendSuccessRedirect(provider = "") {
+  const redirectUrl = new URL("/auth/callback", FRONTEND_URL);
+  redirectUrl.searchParams.set("oauth", "success");
   if (provider) redirectUrl.searchParams.set("provider", provider);
   return redirectUrl.toString();
 }
@@ -384,11 +391,8 @@ router.get("/google/callback", async (req, res) => {
       await user.save();
     }
 
-    // Set cookie AND pass token in URL — cookie works for same-domain
-    // future refreshes, token bootstraps the session immediately
     await createSessionCookie(user, res);
-    const accessToken = createAccessToken(user);
-    return res.redirect(`${FRONTEND_URL}/?oauth=success&token=${accessToken}`);
+    return res.redirect(buildFrontendSuccessRedirect("google"));
   } catch (error) {
     logger.error("Google OAuth callback error", { error: error.message });
     return res.redirect(buildFrontendErrorRedirect("google_oauth_failed", "google"));
