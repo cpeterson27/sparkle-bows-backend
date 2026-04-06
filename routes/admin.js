@@ -24,28 +24,33 @@ router.get("/analytics", async (req, res) => {
     }
 
     // ── Core metrics ──────────────────────────────────────────────────────────
-    const totalOrders = await Order.countDocuments(dateFilter);
+    const paidOrderFilter = {
+      ...dateFilter,
+      status: { $ne: "pending" },
+    };
+
+    const totalOrders = await Order.countDocuments(paidOrderFilter);
 
     const revenueResult = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $group: { _id: null, total: { $sum: "$total" } } },
     ]);
     const totalRevenue = revenueResult[0]?.total || 0;
 
     const taxResult = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $group: { _id: null, total: { $sum: "$tax" } } },
     ]);
     const totalTaxCollected = taxResult[0]?.total || 0;
 
     const shippingResult = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $group: { _id: null, total: { $sum: "$shippingCost" } } },
     ]);
     const totalShippingCollected = shippingResult[0]?.total || 0;
 
     const stripeFeesResult = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $group: { _id: null, total: { $sum: "$stripeFee" } } },
     ]);
     const totalStripeFees = stripeFeesResult[0]?.total || 0;
@@ -54,7 +59,7 @@ router.get("/analytics", async (req, res) => {
     const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     // Unique customers by email
-    const totalCustomers = await Order.distinct("customerEmail", dateFilter).then(
+    const totalCustomers = await Order.distinct("customerEmail", paidOrderFilter).then(
       (arr) => arr.length
     );
 
@@ -74,7 +79,7 @@ router.get("/analytics", async (req, res) => {
 
     // ── Returning customers ───────────────────────────────────────────────────
     const customerOrderCounts = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $group: { _id: "$customerEmail", orderCount: { $sum: 1 } } },
     ]);
     const returningCustomers = customerOrderCounts.filter((c) => c.orderCount > 1).length;
@@ -85,7 +90,7 @@ router.get("/analytics", async (req, res) => {
 
     // ── Customer Lifetime Value (avg total spent per customer) ────────────────
     const clvResult = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $group: { _id: "$customerEmail", totalSpent: { $sum: "$total" } } },
       { $group: { _id: null, avgCLV: { $avg: "$totalSpent" } } },
     ]);
@@ -93,7 +98,7 @@ router.get("/analytics", async (req, res) => {
 
     // ── Top customers by spend ────────────────────────────────────────────────
     const topCustomers = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       {
         $group: {
           _id: "$customerEmail",
@@ -117,7 +122,7 @@ router.get("/analytics", async (req, res) => {
 
     // ── Sales by product ──────────────────────────────────────────────────────
     const salesByProduct = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $unwind: "$items" },
       {
         $group: {
@@ -172,7 +177,7 @@ router.get("/analytics", async (req, res) => {
     const topProducts = productProfitStats.slice(0, 5);
 
     // ── Recent 20 orders (increased from 5 so Orders tab is useful) ───────────
-    const recentOrders = await Order.find(dateFilter)
+    const recentOrders = await Order.find(paidOrderFilter)
       .sort({ createdAt: -1 })
       .limit(20)
       .populate("items.productId");
@@ -182,7 +187,7 @@ router.get("/analytics", async (req, res) => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const recentOrders30Days = await Order.find({
-      ...dateFilter,
+      ...paidOrderFilter,
       createdAt: { $gte: thirtyDaysAgo },
     }).populate("items.productId");
 
@@ -243,7 +248,7 @@ router.get("/analytics", async (req, res) => {
 
     // ── Order status breakdown ────────────────────────────────────────────────
     const orderStatusBreakdown = await Order.aggregate([
-      { $match: dateFilter },
+      { $match: paidOrderFilter },
       { $group: { _id: "$status", count: { $sum: 1 } } },
       { $project: { status: "$_id", count: 1, _id: 0 } },
     ]);

@@ -43,7 +43,10 @@ router.get("/public/:idOrPi", async (req, res) => {
 // -------------------------
 router.get("/my", verifyToken, async (req, res) => {
   try {
-    const orders = await Order.find({ userId: req.user.userId })
+    const orders = await Order.find({
+      userId: req.user.userId,
+      status: { $ne: "pending" },
+    })
       .populate("items.productId")
       .sort({ createdAt: -1 });
     res.json(orders);
