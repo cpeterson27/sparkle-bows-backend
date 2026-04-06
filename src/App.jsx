@@ -46,6 +46,7 @@ export default function App() {
   const hasLoadedProducts = useRef(false);
   const handledOauthRef = useRef("");
   const cartLoaded = useRef(false); // ← NEW
+  const activeCartSession = user?._id || user?.id || user?.email || "guest";
 
   // ───────────────── Load products once
   useEffect(() => {
@@ -74,6 +75,10 @@ export default function App() {
 
   // ───────────────── Load cart from backend
   useEffect(() => {
+    if (authLoading) return;
+
+    cartLoaded.current = false;
+
     (async () => {
       try {
         const res = await api.get("/api/cart");
@@ -89,15 +94,16 @@ export default function App() {
         cartLoaded.current = true; // ← mark done whether success or error
       }
     })();
-  }, []);
+  }, [authLoading, activeCartSession]);
 
   // ───────────────── Sync cart to backend
   useEffect(() => {
+    if (authLoading) return;
     if (!cartLoaded.current) return; // ← skip until cart is loaded from server
     api.put("/api/cart", { items: cart }).catch((err) => {
       if (err.response?.status !== 404) console.error(err);
     });
-  }, [cart]);
+  }, [authLoading, cart]);
 
   // ───────────────── Handle OAuth redirect
   useEffect(() => {
