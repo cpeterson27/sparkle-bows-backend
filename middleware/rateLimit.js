@@ -48,9 +48,17 @@ const cartLimiter = rateLimit({
   message: "Too many cart updates.",
 });
 
+const contactLimiter = rateLimit({
+  ...baseConfig,
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: "Too many contact requests. Please try again later.",
+});
+
 module.exports = {
   generalLimiter,
   authLimiter,
   refreshTokenLimiter,
   cartLimiter,
+  contactLimiter,
 };

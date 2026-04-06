@@ -11,6 +11,7 @@ const {
   authLimiter,
   refreshTokenLimiter,
   cartLimiter,
+  contactLimiter,
 } = require("./middleware/rateLimit");
 const userRoutes = require("./routes/user");
 const validationRoutes = require("./routes/validation");
@@ -59,6 +60,7 @@ app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/refresh-token", refreshTokenLimiter);
 app.use("/api/cart", cartLimiter);
+app.use("/api/contact", contactLimiter);
 
 // ------------------------
 // STRIPE WEBHOOK — must come BEFORE body parsers
@@ -89,6 +91,7 @@ app.use("/api/expenses", require("./routes/expenses"));
 app.use("/api/checkout", require("./routes/checkout"));
 app.use("/api/user", userRoutes);
 app.use("/api/leads", require("./routes/leads"));
+app.use("/api/contact", require("./routes/contact"));
 app.use("/api/validation", validationRoutes);
 
 // ------------------------
