@@ -1,4 +1,5 @@
 import axios from "axios";
+import API_URL from "../config/api";
 
 // Injected by AuthProvider so interceptors can always read the latest token
 let getAccessToken = null;
@@ -13,7 +14,7 @@ export function injectAccessTokenSetter(fn) {
 }
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:3001",
+  baseURL: API_URL,
   withCredentials: true,
 });
 
@@ -81,7 +82,7 @@ api.interceptors.response.use(
     try {
       // Try to get a fresh access token using the refresh token cookie
       const { data } = await axios.post(
-        `${process.env.REACT_APP_API_URL || "http://localhost:3001"}/api/auth/refresh-token`,
+        `${API_URL}/api/auth/refresh-token`,
         {},
         { withCredentials: true },
       );

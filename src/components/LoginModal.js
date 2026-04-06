@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import api from "../api/axios.config";
+import API_URL from "../config/api";
 import { AuthContext } from "../context/AuthContext";
 
 export default function LoginModal({ onClose, onLogin }) {
@@ -27,7 +28,7 @@ export default function LoginModal({ onClose, onLogin }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const oauthBaseUrl = process.env.REACT_APP_API_URL || window.location.origin;
+  const oauthBaseUrl = API_URL;
   const googleEnabled = process.env.REACT_APP_GOOGLE_OAUTH_ENABLED === "true";
 
   // Auto-load saved email on mount
