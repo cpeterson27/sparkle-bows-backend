@@ -377,6 +377,11 @@ function OrdersTable({ orders, loading, onUpdateStatus }) {
                     <p className="text-sm text-gray-500">
                       {order.items?.length || 0} items
                     </p>
+                    {order.isGift ? (
+                      <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+                        Gift
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {order.createdAt
@@ -390,6 +395,17 @@ function OrdersTable({ orders, loading, onUpdateStatus }) {
                     <p className="text-sm text-gray-500">
                       {order.customerEmail || ""}
                     </p>
+                    {order.shippingAddress?.name &&
+                    order.shippingAddress.name !== order.customerName ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Recipient: {order.shippingAddress.name}
+                      </p>
+                    ) : null}
+                    {order.giftMessage ? (
+                      <p className="mt-2 max-w-xs rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                        Note: {order.giftMessage}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-6 py-4">
                     <span
@@ -1345,24 +1361,36 @@ export default function AdminDashboard({ user, onRefresh }) {
                 {analytics.recentOrders?.slice(0, 5).map((order) => (
                   <div
                     key={order._id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    className="rounded-lg bg-gray-50 p-3"
                   >
-                    <div>
-                      <p className="font-medium text-gray-900">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-gray-900">
                         #{order._id?.slice(-8).toUpperCase()}
-                      </p>
-                      <p className="text-sm text-gray-500">
+                        </p>
+                        <p className="text-sm text-gray-500">
                         {order.customerName || "Unknown"} ·{" "}
                         {order.items?.length || 0} items
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium text-gray-900">
+                        </p>
+                        {order.isGift ? (
+                          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">
+                            Gift order
+                          </p>
+                        ) : null}
+                        {order.giftMessage ? (
+                          <p className="mt-2 max-w-sm text-xs leading-5 text-slate-600">
+                            Note: {order.giftMessage}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-gray-900">
                         ${order.total?.toFixed(2)}
-                      </p>
-                      <p className="text-xs text-gray-500 capitalize">
+                        </p>
+                        <p className="text-xs text-gray-500 capitalize">
                         {order.status || "pending"}
-                      </p>
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )) || (
