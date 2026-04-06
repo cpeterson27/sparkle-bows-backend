@@ -39,6 +39,7 @@ const productSchema = new Schema({
   materialCost: { type: Number, default: 0, min: 0 },
   profitPerUnit: { type: Number, default: 0 },
   sales: { type: Number, default: 0, min: 0 },
+  stripeTaxCode: { type: String, default: "" },
 
   featured: { type: Boolean, default: false },
   bestseller: { type: Boolean, default: false },

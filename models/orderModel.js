@@ -75,6 +75,8 @@ const orderSchema = new mongoose.Schema(
 
     stripePaymentIntentId: { type: String },
     stripeChargeId: { type: String },
+    stripeTaxCalculationId: { type: String, default: "" },
+    stripeTaxBreakdown: { type: [mongoose.Schema.Types.Mixed], default: [] },
 
     waveInvoiceId: { type: String, default: null },
     waveInvoiceNumber: { type: String, default: null },

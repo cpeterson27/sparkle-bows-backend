@@ -76,8 +76,6 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
           return res.status(400).json({ error: "No charge found" });
         }
 
-        const taxAmount = charge.amount_captured - paymentIntent.amount;
-        const tax = Math.max(0, taxAmount / 100);
         const total = charge.amount_captured / 100;
 
         let stripeFee = 0;
@@ -101,15 +99,22 @@ router.post("/", express.raw({ type: "application/json" }), async (req, res) => 
         // -------------------------
         // 5. UPDATE ORDER
         // -------------------------
-        order.tax = parseFloat(tax.toFixed(2));
-        order.total = parseFloat(total.toFixed(2));
         order.stripeFee = parseFloat(stripeFee.toFixed(2));
         order.status = "processing";
         order.stripeChargeId = charge.id;
 
+        if (Math.abs(total - order.total) > 0.01) {
+          logger.warn("Captured total differed from stored order total", {
+            orderId: order._id,
+            paymentIntentId: paymentIntent.id,
+            orderTotal: order.total,
+            capturedTotal: parseFloat(total.toFixed(2)),
+          });
+        }
+
         await order.save();
 
-        logger.info("✅ Order updated with Stripe tax and totals", {
+        logger.info("✅ Order updated with Stripe totals", {
           orderId: order._id,
           tax: order.tax,
           total: order.total,
