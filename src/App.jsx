@@ -32,7 +32,11 @@ import api from "./api/axios.config";
 import { AuthContext } from "./context/AuthContext";
 import { useSiteSettings } from "./context/SiteSettingsContext";
 import { consumeStoredOAuthResult, hasOAuthParams } from "./auth/oauthState";
-import { initializeAnalytics, trackPageView } from "./lib/analytics";
+import {
+  initializeAnalytics,
+  trackAddToCart,
+  trackPageView,
+} from "./lib/analytics";
 
 export default function App() {
   const { user, loading: authLoading, completeOAuthLogin } = useContext(AuthContext);
@@ -185,6 +189,7 @@ export default function App() {
 
   // ───────────────── Cart handlers
   const addToCart = useCallback((product, qty = 1) => {
+    trackAddToCart(product, qty);
     setCart((prev) => {
       const exists = prev.find((i) => i.productId._id === product._id);
       if (exists) {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
 import Confetti from "../components/Confetti";
 import Seo from "../components/Seo";
 import { useSiteSettings } from "../context/SiteSettingsContext";
+import { trackViewItem } from "../lib/analytics";
 
 function formatPrice(price) {
   return `$${Number(price || 0).toFixed(2)}`;
@@ -46,6 +47,12 @@ export default function ProductPage({
   const [reviewText, setReviewText] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [hoverRating, setHoverRating] = useState(0);
+
+  useEffect(() => {
+    if (product?._id) {
+      trackViewItem(product);
+    }
+  }, [product]);
 
   if (!product) {
     return (

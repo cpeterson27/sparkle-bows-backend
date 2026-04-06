@@ -17,6 +17,7 @@ import {
 import StripeCheckoutForm from "./StripeCheckoutForm";
 import ConfirmModal from "./ConfirmModal";
 import api from "../api/axios.config";
+import { trackBeginCheckout } from "../lib/analytics";
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
@@ -99,6 +100,11 @@ export default function CartSidebar({
     }
 
     try {
+      trackBeginCheckout(cart, {
+        total: estimatedTotal,
+        cartTotal,
+      });
+
       const res = await api.post("/api/stripe/create-payment-intent", {
         customerName: user.name,
         customerEmail: user.email,

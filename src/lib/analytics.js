@@ -96,6 +96,61 @@ export function trackPageView({ title, path, location }) {
   }
 }
 
+function mapItem(item) {
+  return {
+    item_id: item.productId?._id || item._id || item.id || item.name,
+    item_name: item.name || item.productId?.name || "Product",
+    item_category: item.category || item.productId?.category || undefined,
+    price: Number(item.price || item.productId?.price || 0),
+    quantity: Number(item.quantity || 1),
+  };
+}
+
+function emitEvent(name, payload) {
+  ensureDataLayer().push({ event: name, ecommerce: payload });
+
+  if (window.gtag && gaInitializedId) {
+    window.gtag("event", name, payload);
+  }
+}
+
+export function trackViewItem(product) {
+  if (typeof window === "undefined" || !product?._id) return;
+
+  const payload = {
+    currency: "USD",
+    value: Number(product.price || 0),
+    items: [mapItem(product)],
+  };
+
+  emitEvent("view_item", payload);
+}
+
+export function trackAddToCart(product, quantity = 1) {
+  if (typeof window === "undefined" || !product?._id) return;
+
+  const payload = {
+    currency: "USD",
+    value: Number(product.price || 0) * Number(quantity || 1),
+    items: [mapItem({ ...product, quantity })],
+  };
+
+  emitEvent("add_to_cart", payload);
+}
+
+export function trackBeginCheckout(cart = [], totals = {}) {
+  if (typeof window === "undefined" || !cart.length) return;
+
+  const payload = {
+    currency: "USD",
+    value: Number(totals.total || totals.grandTotal || totals.cartTotal || 0),
+    coupon: totals.coupon || undefined,
+    items: cart.map((item) => mapItem(item)),
+  };
+
+  emitEvent("begin_checkout", payload);
+}
+
 export function trackPurchase(order) {
   if (typeof window === "undefined" || !order?._id) return;
 
@@ -118,11 +173,7 @@ export function trackPurchase(order) {
     items,
   };
 
-  ensureDataLayer().push({ event: "purchase", ecommerce: payload });
-
-  if (window.gtag && gaInitializedId) {
-    window.gtag("event", "purchase", payload);
-  }
+  emitEvent("purchase", payload);
 
   window.sessionStorage.setItem(storageKey, "1");
 }
