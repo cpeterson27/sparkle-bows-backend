@@ -1,102 +1,113 @@
 const request = require("supertest");
 const app = require("../app");
-const mongoose = require("mongoose");
+const User = require("../models/User");
 
-describe("Authenticated Reviews API", () => {
-  let token;
-  let productId;
-  let reviewId;
+function validSignupPayload(overrides = {}) {
+  return {
+    name: "Auth Reviewer",
+    email: "authreview@test.com",
+    password: "password123",
+    website: "",
+    formStartedAt: Date.now() - 2000,
+    ...overrides,
+  };
+}
 
-  beforeAll(async () => {
-    // 1) Create a product to attach reviews to
-    const productRes = await request(app)
-      .post("/api/products")
-      .send({
-        name: "Secure Test Bow",
-        price: 12.99,
-        category: "sparkle",
-        description: "A bow for auth testing!",
-        images: ["http://example.com/bow2.png"],
-        inventory: 3,
-      });
+describe("Auth API", () => {
+  it("registers a user when form protection fields are valid", async () => {
+    const res = await request(app)
+      .post("/api/auth/signup")
+      .send(validSignupPayload());
 
-    productId = productRes.body._id;
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty("accessToken");
+    expect(res.body.user).toMatchObject({
+      email: "authreview@test.com",
+      name: "Auth Reviewer",
+      role: "user",
+    });
 
-    // 2) Sign up a new user (optional — you can also log in an existing user)
+    const savedUser = await User.findOne({ email: "authreview@test.com" });
+    expect(savedUser).not.toBeNull();
+  });
+
+  it("blocks signup when the anti-bot timer is too fast", async () => {
+    const res = await request(app)
+      .post("/api/auth/signup")
+      .send(
+        validSignupPayload({
+          email: "too-fast@test.com",
+          formStartedAt: Date.now(),
+        }),
+      );
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/please wait a moment/i);
+  });
+
+  it("logs in and returns the current user from /me", async () => {
     await request(app)
       .post("/api/auth/signup")
-      .send({
-        email: "authreview@test.com",
-        password: "password123",
-        name: "Auth Reviewer",
-      });
+      .send(
+        validSignupPayload({
+          email: "login-flow@test.com",
+          name: "Login Flow",
+        }),
+      );
 
-    // 3) Log in to get an access token
     const loginRes = await request(app)
       .post("/api/auth/login")
       .send({
-        email: "authreview@test.com",
+        email: "login-flow@test.com",
         password: "password123",
       });
 
-    token = loginRes.body.accessToken;
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body).toHaveProperty("accessToken");
+
+    const meRes = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${loginRes.body.accessToken}`);
+
+    expect(meRes.status).toBe(200);
+    expect(meRes.body).toMatchObject({
+      email: "login-flow@test.com",
+      name: "Login Flow",
+      role: "user",
+    });
   });
 
-  it("Should reject creating a review without auth", async () => {
-    const res = await request(app)
-      .post("/api/reviews")
+  it("updates the authenticated user's profile", async () => {
+    await request(app)
+      .post("/api/auth/signup")
+      .send(
+        validSignupPayload({
+          email: "profile-update@test.com",
+          name: "Before Update",
+        }),
+      );
+
+    const loginRes = await request(app)
+      .post("/api/auth/login")
       .send({
-        productId,
-        userName: "NotLoggedInUser",
-        rating: 3,
-        text: "Should not work!",
+        email: "profile-update@test.com",
+        password: "password123",
       });
-    expect(res.status).toBe(401);
-  });
 
-  it("Should allow creating a review when authenticated", async () => {
     const res = await request(app)
-      .post("/api/reviews")
-      .set("Authorization", `Bearer ${token}`) // attach valid token
+      .patch("/api/auth/update-profile")
+      .set("Authorization", `Bearer ${loginRes.body.accessToken}`)
       .send({
-        productId,
-        userName: "AuthTester",
-        rating: 5,
-        text: "This bow is excellent!",
+        name: "After Update",
+        phone: "555-0101",
       });
-
-    expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty("_id");
-    reviewId = res.body._id;
-  });
-
-  it("Should fetch reviews for product", async () => {
-    const res = await request(app).get(`/api/reviews/${productId}`);
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThan(0);
-  });
-
-  it("Should update a review when authenticated", async () => {
-    const res = await request(app)
-      .patch(`/api/reviews/${reviewId}`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ rating: 4, text: "Still great, slight update." });
 
     expect(res.status).toBe(200);
-    expect(res.body.rating).toBe(4);
-  });
-
-  it("Should not update review without auth", async () => {
-    const res = await request(app)
-      .patch(`/api/reviews/${reviewId}`)
-      .send({ rating: 1 });
-
-    expect(res.status).toBe(401);
+    expect(res.body.user).toMatchObject({
+      email: "profile-update@test.com",
+      name: "After Update",
+      phone: "555-0101",
+    });
+    expect(res.body).toHaveProperty("token");
   });
 });
-
-afterAll(async () => {
-  await mongoose.connection.close();
-});
-

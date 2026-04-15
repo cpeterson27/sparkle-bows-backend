@@ -5,20 +5,23 @@ let mongoServer;
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri(), {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  });
+  await mongoose.connect(mongoServer.getUri());
 });
 
 afterEach(async () => {
-  const collections = mongoose.connection.collections;
-  for (const key in collections) {
-    await collections[key].deleteMany({});
+  const collections = Object.values(mongoose.connection.collections);
+
+  for (const collection of collections) {
+    await collection.deleteMany({});
   }
 });
 
 afterAll(async () => {
-  await mongoose.connection.close();
-  if (mongoServer) await mongoServer.stop();
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.connection.close();
+  }
+
+  if (mongoServer) {
+    await mongoServer.stop();
+  }
 });

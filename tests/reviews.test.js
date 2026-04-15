@@ -1,32 +1,25 @@
 const request = require("supertest");
 const app = require("../app");
-const mongoose = require("mongoose");
+const Product = require("../models/productModel");
 
-// A sample product with ID to attach reviews to
-let productId;
+describe("Reviews API", () => {
+  let productId;
+  let createdReviewId;
 
-// Before all tests, optionally create a product first
-beforeAll(async () => {
-  // Create a product to attach reviews to
-  const productRes = await request(app)
-    .post("/api/products")
-    .send({
-      name: "Test Bow",
+  beforeEach(async () => {
+    const product = await Product.create({
+      name: `Test Bow ${Date.now()}`,
       price: 10.99,
       category: "sparkle",
       description: "Test description",
-      images: ["http://example.com/bow.png"],
+      images: [{ url: "http://example.com/bow.png", alt: "Test bow" }],
       inventory: 5,
     });
 
-  // Store the productId for later use
-  productId = productRes.body._id;
-});
+    productId = product._id.toString();
+  });
 
-describe("Reviews API", () => {
-  let createdReviewId;
-
-  it("POST /api/reviews — should create a new review", async () => {
+  it("POST /api/reviews creates a new review", async () => {
     const res = await request(app)
       .post("/api/reviews")
       .send({
@@ -42,15 +35,39 @@ describe("Reviews API", () => {
     createdReviewId = res.body._id;
   });
 
-  it("GET /api/reviews/:productId — should fetch reviews for product", async () => {
+  it("GET /api/reviews/:productId fetches reviews for a product", async () => {
+    await request(app)
+      .post("/api/reviews")
+      .send({
+        productId,
+        userName: "Tester",
+        rating: 5,
+        text: "Amazing bow!",
+      });
+
     const res = await request(app).get(`/api/reviews/${productId}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(res.body[0]).toMatchObject({
+      productId,
+      userName: "Tester",
+    });
   });
 
-  it("PATCH /api/reviews/:reviewId — should update a review", async () => {
+  it("PATCH /api/reviews/:reviewId updates a review", async () => {
+    const createRes = await request(app)
+      .post("/api/reviews")
+      .send({
+        productId,
+        userName: "Tester",
+        rating: 5,
+        text: "Amazing bow!",
+      });
+
+    createdReviewId = createRes.body._id;
+
     const res = await request(app)
       .patch(`/api/reviews/${createdReviewId}`)
       .send({ rating: 4, text: "Still good, slightly changed opinion." });
@@ -60,16 +77,12 @@ describe("Reviews API", () => {
     expect(res.body.text).toMatch(/Still good/);
   });
 
-  it("POST /api/reviews — missing fields should return 400", async () => {
+  it("POST /api/reviews returns 400 when fields are missing", async () => {
     const res = await request(app)
       .post("/api/reviews")
-      .send({ productId }); // missing other fields
+      .send({ productId });
 
     expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Missing required fields");
   });
-});
-
-// Close DB connection after all tests
-afterAll(async () => {
-  await mongoose.connection.close();
 });

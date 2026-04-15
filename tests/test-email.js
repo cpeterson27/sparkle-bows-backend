@@ -1,21 +1,30 @@
 require("dotenv").config();
 const nodemailer = require("nodemailer");
 
+const smtpUser = process.env.GMAIL_USER;
+const smtpPass = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS;
+
+if (!smtpUser || !smtpPass) {
+  console.error(
+    "Missing email credentials. Set GMAIL_USER and GMAIL_APP_PASSWORD in your environment.",
+  );
+  process.exit(1);
+}
+
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
   secure: true, // SSL
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS,
+    user: smtpUser,
+    pass: smtpPass,
   },
 });
 
-
 transporter.sendMail(
   {
-    from: process.env.GMAIL_USER,
-    to: process.env.GMAIL_USER, // Send to yourself
+    from: process.env.EMAIL_FROM || smtpUser,
+    to: smtpUser, // Send to yourself
     subject: "Test Email",
     text: "Nodemailer is working! 🎉",
   },
