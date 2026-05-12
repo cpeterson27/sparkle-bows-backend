@@ -12,6 +12,9 @@ const STRIPE_TAX_PREVIEW_VERSION =
   process.env.STRIPE_TAX_PREVIEW_VERSION || "2025-09-30.preview";
 const DEFAULT_PRODUCT_TAX_CODE = process.env.STRIPE_DEFAULT_PRODUCT_TAX_CODE;
 const DEFAULT_SHIPPING_TAX_CODE = process.env.STRIPE_DEFAULT_SHIPPING_TAX_CODE;
+const FREE_SHIPPING_THRESHOLD = Number(process.env.FREE_SHIPPING_THRESHOLD || 50);
+const SAFETY_WARNING =
+  "WARNING: Contains small parts. Not intended for children under 3. Use with adult supervision. Remove before sleeping.";
 
 function toCents(amount) {
   return Math.round(Number(amount || 0) * 100);
@@ -68,7 +71,28 @@ function buildTaxBreakdown(taxCalculation) {
 }
 
 function toMetadataString(value) {
-  return value ? String(value) : "";
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function normalizeCountry(country) {
+  return String(country || "US").trim().toUpperCase();
+}
+
+function qualifiesForFreeShipping(subtotal, shippingInfo = {}) {
+  return normalizeCountry(shippingInfo.country) === "US" && Number(subtotal || 0) >= FREE_SHIPPING_THRESHOLD;
+}
+
+function applyShippingPromotion(rate, subtotal, shippingInfo) {
+  const actualAmount = Number(rate.amount || 0);
+  const freeShipping = qualifiesForFreeShipping(subtotal, shippingInfo);
+
+  return {
+    ...rate,
+    amount: freeShipping ? 0 : actualAmount,
+    actualAmount,
+    discountAmount: freeShipping ? actualAmount : 0,
+    freeShipping,
+  };
 }
 
 async function expireExistingPendingOrders({ userId, customerEmail }) {
@@ -83,7 +107,7 @@ async function expireExistingPendingOrders({ userId, customerEmail }) {
 }
 
 function validateShippingInfo(shippingInfo) {
-  const country = String(shippingInfo?.country || "US").trim().toUpperCase();
+  const country = normalizeCountry(shippingInfo?.country);
 
   if (
     !shippingInfo?.line1 ||
@@ -214,8 +238,20 @@ router.post("/shipping-rates", optionalAuth, async (req, res) => {
       orderItems,
     });
     const { shipmentId, rates } = await getRatesForOrder(quoteOrder);
+    const customerRates = rates.map((rate) =>
+      applyShippingPromotion(rate, subtotal, shippingInfo),
+    );
 
-    res.json({ shipmentId, subtotal, rates });
+    res.json({
+      shipmentId,
+      subtotal,
+      freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+      freeShippingEligible: qualifiesForFreeShipping(subtotal, shippingInfo),
+      shippingPolicy:
+        "Free U.S. shipping on orders over $50. International shipping is calculated at checkout.",
+      safetyWarning: SAFETY_WARNING,
+      rates: customerRates,
+    });
   } catch (err) {
     logger.error("Shippo shipping rates failed", {
       message: err.message,
@@ -275,7 +311,12 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       id: selectedShippingRateId,
       rateKey: selectedShippingRateKey,
     });
-    const shippingCost = selectedShipping.rate.amount;
+    const selectedShippingRate = applyShippingPromotion(
+      selectedShipping.rate,
+      subtotal,
+      shippingInfo,
+    );
+    const shippingCost = selectedShippingRate.amount;
     const stripeAddress = buildAddress(shippingInfo);
     const shippingName = buildShippingName(customerName, shippingInfo);
     const shipFromDetails = buildShipFromDetails();
@@ -348,6 +389,9 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
           shippoRateId: selectedShipping.rate.id,
           shippingProvider: selectedShipping.rate.provider,
           shippingService: selectedShipping.rate.service,
+          shippingActualAmount: toMetadataString(selectedShippingRate.actualAmount),
+          shippingDiscountAmount: toMetadataString(selectedShippingRate.discountAmount),
+          freeShipping: selectedShippingRate.freeShipping ? "true" : "false",
         },
       },
       {
@@ -392,7 +436,12 @@ router.post("/create-payment-intent", optionalAuth, async (req, res) => {
       orderId: order._id,
       subtotal,
       shippingCost,
-      shippingRate: selectedShipping.rate,
+      shippingRate: selectedShippingRate,
+      freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+      freeShippingEligible: selectedShippingRate.freeShipping,
+      shippingPolicy:
+        "Free U.S. shipping on orders over $50. International shipping is calculated at checkout.",
+      safetyWarning: SAFETY_WARNING,
       tax: taxAmount,
       total,
     });

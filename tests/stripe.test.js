@@ -34,6 +34,17 @@ jest.mock("../logger", () => ({
   error: jest.fn(),
   debug: jest.fn(),
 }));
+jest.mock("../middleware/rateLimit", () => {
+  const passThrough = (req, res, next) => next();
+  return {
+    generalLimiter: passThrough,
+    authLimiter: passThrough,
+    refreshTokenLimiter: passThrough,
+    cartLimiter: passThrough,
+    contactLimiter: passThrough,
+    leadsLimiter: passThrough,
+  };
+});
 
 const request = require("supertest");
 const mongoose = require("mongoose");
@@ -118,10 +129,16 @@ describe("Stripe payment intent route", () => {
     expect(res.body).toMatchObject({
       shipmentId: "shippo_shipment_123",
       subtotal: 20,
+      freeShippingThreshold: 50,
+      freeShippingEligible: false,
+      safetyWarning: expect.stringContaining("Contains small parts"),
       rates: [
         expect.objectContaining({
           id: "shippo_rate_123",
           amount: 8.75,
+          actualAmount: 8.75,
+          discountAmount: 0,
+          freeShipping: false,
           provider: "USPS",
         }),
       ],
@@ -205,11 +222,16 @@ describe("Stripe payment intent route", () => {
       clientSecret: "pi_123_secret_abc",
       subtotal: 20,
       shippingCost: 8.75,
+      freeShippingEligible: false,
+      safetyWarning: expect.stringContaining("Contains small parts"),
       tax: 1.5,
       total: 30.25,
       shippingRate: expect.objectContaining({
         id: "shippo_rate_123",
         amount: 8.75,
+        actualAmount: 8.75,
+        discountAmount: 0,
+        freeShipping: false,
       }),
     });
 
@@ -250,6 +272,9 @@ describe("Stripe payment intent route", () => {
           shippoRateId: "shippo_rate_123",
           shippingProvider: "USPS",
           shippingService: "Ground Advantage",
+          shippingActualAmount: "8.75",
+          shippingDiscountAmount: "0",
+          freeShipping: "false",
         }),
       }),
       expect.any(Object),
@@ -269,6 +294,120 @@ describe("Stripe payment intent route", () => {
     expect(order.giftMessage).toBe("Happy birthday!");
     expect(order.stripeTaxCalculationId).toBe("taxcalc_123");
     expect(order.stripeTaxBreakdown).toHaveLength(1);
+  });
+
+  it("makes U.S. shipping free when subtotal is at least $50", async () => {
+    const product = await Product.create({
+      name: "Large Sparkle Bow",
+      price: 26,
+      category: "sparkle",
+      inventory: 10,
+      materialCost: 4,
+    });
+
+    await Cart.create({
+      guestId: "guest_free_shipping",
+      items: [{ productId: product._id, quantity: 2 }],
+    });
+
+    mockStripe.tax.calculations.create.mockResolvedValue({
+      id: "taxcalc_free",
+      tax_amount_exclusive: 390,
+      amount_total: 5590,
+      tax_breakdown: [],
+    });
+    mockStripe.customers.create.mockResolvedValue({ id: "cus_free" });
+    mockStripe.paymentIntents.create.mockResolvedValue({
+      id: "pi_free",
+      client_secret: "pi_free_secret",
+    });
+
+    const rateRes = await request(app)
+      .post("/api/stripe/shipping-rates")
+      .set("Cookie", "guestId=guest_free_shipping")
+      .send({
+        customerName: "Free Shipping Customer",
+        customerEmail: "free@example.com",
+        shippingInfo: {
+          name: "Free Shipping Customer",
+          line1: "123 Main St",
+          city: "Omaha",
+          state: "NE",
+          postalCode: "68102",
+          country: "US",
+        },
+      });
+
+    expect(rateRes.status).toBe(200);
+    expect(rateRes.body).toMatchObject({
+      subtotal: 52,
+      freeShippingEligible: true,
+      rates: [
+        expect.objectContaining({
+          id: "shippo_rate_123",
+          amount: 0,
+          actualAmount: 8.75,
+          discountAmount: 8.75,
+          freeShipping: true,
+        }),
+      ],
+    });
+
+    const res = await request(app)
+      .post("/api/stripe/create-payment-intent")
+      .set("Cookie", "guestId=guest_free_shipping")
+      .send({
+        customerName: "Free Shipping Customer",
+        customerEmail: "free@example.com",
+        selectedShippingRateId: "shippo_rate_123",
+        selectedShippingRateKey: "USPS|usps_ground_advantage|8.75|USD",
+        shippingInfo: {
+          name: "Free Shipping Customer",
+          line1: "123 Main St",
+          city: "Omaha",
+          state: "NE",
+          postalCode: "68102",
+          country: "US",
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      clientSecret: "pi_free_secret",
+      subtotal: 52,
+      shippingCost: 0,
+      freeShippingEligible: true,
+      shippingRate: expect.objectContaining({
+        amount: 0,
+        actualAmount: 8.75,
+        discountAmount: 8.75,
+        freeShipping: true,
+      }),
+      tax: 3.9,
+      total: 55.9,
+    });
+
+    expect(mockStripe.tax.calculations.create).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        shipping_cost: expect.anything(),
+      }),
+      expect.any(Object),
+    );
+    expect(mockStripe.paymentIntents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 5590,
+        metadata: expect.objectContaining({
+          shippingActualAmount: "8.75",
+          shippingDiscountAmount: "8.75",
+          freeShipping: "true",
+        }),
+      }),
+      expect.any(Object),
+    );
+
+    const order = await Order.findOne({ stripePaymentIntentId: "pi_free" });
+    expect(order.shippingCost).toBe(0);
+    expect(order.shippoRateId).toBe("shippo_rate_123");
   });
 
   it("rejects checkout when cart inventory is insufficient", async () => {
