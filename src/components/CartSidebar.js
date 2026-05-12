@@ -40,6 +40,10 @@ export default function CartSidebar({
   const [checkoutTotals, setCheckoutTotals] = useState(null);
   const [isGift, setIsGift] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
+  const [shippingRates, setShippingRates] = useState([]);
+  const [selectedShippingRate, setSelectedShippingRate] = useState(null);
+  const [ratesLoading, setRatesLoading] = useState(false);
+  const [ratesSubtotal, setRatesSubtotal] = useState(null);
   const [shippingForm, setShippingForm] = useState({
     name: user?.name || "",
     line1: "",
@@ -48,18 +52,26 @@ export default function CartSidebar({
     state: "",
     postalCode: "",
     country: "US",
+    phone: user?.phone || "",
   });
 
   const defaultAddress =
     user?.addresses?.find((address) => address.isDefault) ||
     user?.addresses?.[0];
-  const shippingEstimate =
-    cartTotal >= 75 ? 0 : cartTotal >= 35 ? 4.99 : 6.99;
-  const estimatedTotal = cartTotal + shippingEstimate;
   const validCartItems = cart.filter((item) => item?.productId?._id);
+  const selectedShippingAmount = Number(selectedShippingRate?.amount || 0);
+  const estimatedTotal = cartTotal + selectedShippingAmount;
   const stripeOptions = useMemo(
     () => (clientSecret ? { clientSecret } : null),
     [clientSecret],
+  );
+  const cartRateSignature = useMemo(
+    () =>
+      validCartItems
+        .map((item) => `${item.productId._id}:${item.quantity}`)
+        .sort()
+        .join("|"),
+    [validCartItems],
   );
 
   useEffect(() => {
@@ -71,31 +83,120 @@ export default function CartSidebar({
       state: defaultAddress?.state || "",
       postalCode: defaultAddress?.postalCode || "",
       country: defaultAddress?.country || "US",
+      phone: user?.phone || "",
     });
-  }, [defaultAddress, user?.name]);
+  }, [defaultAddress, user?.name, user?.phone]);
+
+  useEffect(() => {
+    clearShippingRates();
+  }, [cartRateSignature]);
+
+  const clearShippingRates = () => {
+    setShippingRates([]);
+    setSelectedShippingRate(null);
+    setRatesSubtotal(null);
+    setCheckoutTotals(null);
+    setClientSecret(null);
+    setOrderId(null);
+    setShowPayment(false);
+  };
 
   const updateShippingField = (field, value) => {
+    clearShippingRates();
     setShippingForm((current) => ({ ...current, [field]: value }));
   };
 
-  const handleCheckout = async () => {
-    setLoading(true);
-    setError("");
+  const buildShippingInfo = () => ({
+    name: shippingForm.name.trim(),
+    line1: shippingForm.line1.trim(),
+    line2: shippingForm.line2.trim(),
+    city: shippingForm.city.trim(),
+    state: shippingForm.state.trim(),
+    postalCode: shippingForm.postalCode.trim(),
+    country: (shippingForm.country || "US").trim().toUpperCase(),
+    phone: shippingForm.phone.trim(),
+  });
+
+  const validateCheckoutDetails = () => {
+    const country = (shippingForm.country || "US").trim().toUpperCase();
 
     if (!user) {
-      setError("Please sign in before checking out.");
-      setLoading(false);
-      return;
+      return "Please sign in before checking out.";
     }
 
     if (
       !shippingForm.name ||
       !shippingForm.line1 ||
       !shippingForm.city ||
-      !shippingForm.state ||
-      !shippingForm.postalCode
+      !shippingForm.postalCode ||
+      !country
     ) {
-      setError("Enter the full shipping details for the recipient before checkout.");
+      return "Enter the full shipping details for the recipient before checkout.";
+    }
+
+    if ((country === "US" || country === "CA") && !shippingForm.state) {
+      return "Enter the state or province before loading shipping options.";
+    }
+
+    if (country !== "US" && !shippingForm.phone) {
+      return "Enter a phone number for international shipping.";
+    }
+
+    return "";
+  };
+
+  const handleLoadShippingRates = async () => {
+    setError("");
+    const validationError = validateCheckoutDetails();
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setRatesLoading(true);
+    clearShippingRates();
+
+    try {
+      const res = await api.post("/api/stripe/shipping-rates", {
+        customerName: user.name,
+        customerEmail: user.email,
+        shippingInfo: buildShippingInfo(),
+      });
+      const rates = Array.isArray(res.data?.rates) ? res.data.rates : [];
+
+      if (!rates.length) {
+        setError("No shipping options were returned for this address.");
+        return;
+      }
+
+      setShippingRates(rates);
+      setSelectedShippingRate(rates[0]);
+      setRatesSubtotal(Number(res.data?.subtotal || cartTotal));
+    } catch (ratesError) {
+      console.error("Shipping rates error:", ratesError);
+      setError(
+        ratesError.response?.data?.error ||
+          "Could not load shipping options. Please review the address and try again.",
+      );
+    } finally {
+      setRatesLoading(false);
+    }
+  };
+
+  const handleCheckout = async () => {
+    setLoading(true);
+    setError("");
+
+    const validationError = validateCheckoutDetails();
+    if (validationError) {
+      setError(validationError);
+      setLoading(false);
+      return;
+    }
+
+    if (!selectedShippingRate) {
+      setError("Choose a shipping option before continuing to payment.");
       setLoading(false);
       return;
     }
@@ -104,20 +205,15 @@ export default function CartSidebar({
       trackBeginCheckout(cart, {
         total: estimatedTotal,
         cartTotal,
+        shipping: selectedShippingAmount,
       });
 
       const res = await api.post("/api/stripe/create-payment-intent", {
         customerName: user.name,
         customerEmail: user.email,
-        shippingInfo: {
-          name: shippingForm.name,
-          line1: shippingForm.line1,
-          line2: shippingForm.line2 || "",
-          city: shippingForm.city,
-          state: shippingForm.state,
-          postalCode: shippingForm.postalCode,
-          country: shippingForm.country || "US",
-        },
+        shippingInfo: buildShippingInfo(),
+        selectedShippingRateId: selectedShippingRate.id,
+        selectedShippingRateKey: selectedShippingRate.rateKey,
         isGift,
         giftMessage: giftMessage.trim(),
       });
@@ -134,6 +230,7 @@ export default function CartSidebar({
         shippingCost: Number(res.data.shippingCost || 0),
         tax: Number(res.data.tax || 0),
         total: Number(res.data.total || estimatedTotal),
+        shippingRate: res.data.shippingRate || selectedShippingRate,
       });
       setShowPayment(true);
     } catch (checkoutError) {
@@ -207,6 +304,8 @@ export default function CartSidebar({
                   <br />
                   {shippingForm.city}, {shippingForm.state}{" "}
                   {shippingForm.postalCode}
+                  <br />
+                  {(shippingForm.country || "US").toUpperCase()}
                 </p>
               </div>
 
@@ -233,10 +332,18 @@ export default function CartSidebar({
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Shipping</span>
-                      <span>
-                        {checkoutTotals.shippingCost === 0
-                          ? "Free"
-                          : `$${checkoutTotals.shippingCost.toFixed(2)}`}
+                      <span className="text-right">
+                        <span className="block">
+                          {checkoutTotals.shippingCost === 0
+                            ? "Free"
+                            : `$${checkoutTotals.shippingCost.toFixed(2)}`}
+                        </span>
+                        {checkoutTotals.shippingRate ? (
+                          <span className="block text-xs text-slate-400">
+                            {checkoutTotals.shippingRate.provider}{" "}
+                            {checkoutTotals.shippingRate.service}
+                          </span>
+                        ) : null}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -381,7 +488,7 @@ export default function CartSidebar({
 
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">
-                      State
+                      State / province
                     </span>
                     <input
                       type="text"
@@ -390,14 +497,14 @@ export default function CartSidebar({
                         updateShippingField("state", event.target.value)
                       }
                       className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                      placeholder="State"
+                      placeholder="State or province"
                       autoComplete="shipping address-level1"
                     />
                   </label>
 
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">
-                      ZIP code
+                      Postal code
                     </span>
                     <input
                       type="text"
@@ -406,7 +513,7 @@ export default function CartSidebar({
                         updateShippingField("postalCode", event.target.value)
                       }
                       className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
-                      placeholder="ZIP code"
+                      placeholder="Postal code"
                       autoComplete="shipping postal-code"
                     />
                   </label>
@@ -426,7 +533,95 @@ export default function CartSidebar({
                       autoComplete="shipping country"
                     />
                   </label>
+
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                      Phone
+                    </span>
+                    <input
+                      type="tel"
+                      value={shippingForm.phone}
+                      onChange={(event) =>
+                        updateShippingField("phone", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100"
+                      placeholder="Required for international shipping"
+                      autoComplete="shipping tel"
+                    />
+                  </label>
                 </div>
+              </div>
+
+              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                      Shipping options
+                    </p>
+                    <p className="mt-3 text-sm leading-7 text-slate-500">
+                      Rates are quoted from Shippo for the delivery address above.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLoadShippingRates}
+                    disabled={ratesLoading}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-rose-300 hover:text-rose-600 disabled:opacity-50"
+                  >
+                    {ratesLoading
+                      ? "Loading rates..."
+                      : shippingRates.length
+                        ? "Refresh rates"
+                        : "Load rates"}
+                  </button>
+                </div>
+
+                {shippingRates.length ? (
+                  <div className="mt-5 space-y-3">
+                    {shippingRates.map((rate) => {
+                      const isSelected =
+                        selectedShippingRate?.rateKey === rate.rateKey ||
+                        selectedShippingRate?.id === rate.id;
+                      return (
+                        <label
+                          key={rate.rateKey || rate.id}
+                          className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${
+                            isSelected
+                              ? "border-rose-300 bg-rose-50"
+                              : "border-slate-200 bg-slate-50 hover:border-rose-200"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="shipping-rate"
+                            checked={isSelected}
+                            onChange={() => setSelectedShippingRate(rate)}
+                            className="mt-1 h-4 w-4 border-slate-300 text-rose-500 focus:ring-rose-400"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-slate-950">
+                              {rate.provider} {rate.service}
+                            </span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-500">
+                              {rate.estimatedDays
+                                ? `${rate.estimatedDays} business day${
+                                    Number(rate.estimatedDays) === 1 ? "" : "s"
+                                  }`
+                                : rate.durationTerms || "Carrier delivery estimate"}
+                            </span>
+                          </span>
+                          <span className="text-sm font-semibold text-slate-950">
+                            ${Number(rate.amount || 0).toFixed(2)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                    Enter the shipping address, then load live carrier rates before payment.
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -509,21 +704,37 @@ export default function CartSidebar({
                 <div className="mt-5 space-y-3 text-sm text-slate-600">
                   <div className="flex items-center justify-between">
                     <span>Subtotal</span>
-                    <span>${cartTotal.toFixed(2)}</span>
+                    <span>${Number(ratesSubtotal || cartTotal).toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Estimated shipping</span>
-                    <span>
-                      {shippingEstimate === 0 ? "Free" : `$${shippingEstimate.toFixed(2)}`}
+                    <span>Shipping</span>
+                    <span className="text-right">
+                      {selectedShippingRate ? (
+                        <>
+                          <span className="block">
+                            ${selectedShippingAmount.toFixed(2)}
+                          </span>
+                          <span className="block text-xs text-slate-400">
+                            {selectedShippingRate.provider}{" "}
+                            {selectedShippingRate.service}
+                          </span>
+                        </>
+                      ) : (
+                        "Select a rate"
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Estimated tax</span>
-                    <span>Calculated at checkout</span>
+                    <span>Calculated after rate selection</span>
                   </div>
                   <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-950">
-                    <span>Estimated total before tax</span>
-                    <span>${estimatedTotal.toFixed(2)}</span>
+                    <span>Total before tax</span>
+                    <span>
+                      {selectedShippingRate
+                        ? `$${estimatedTotal.toFixed(2)}`
+                        : `$${cartTotal.toFixed(2)}`}
+                    </span>
                   </div>
                 </div>
 
@@ -551,10 +762,14 @@ export default function CartSidebar({
                 <button
                   type="button"
                   onClick={handleCheckout}
-                  disabled={loading}
+                  disabled={loading || !selectedShippingRate}
                   className="mt-6 w-full rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-50"
                 >
-                  {loading ? "Preparing checkout..." : "Proceed to secure checkout"}
+                  {loading
+                    ? "Preparing checkout..."
+                    : selectedShippingRate
+                      ? "Proceed to secure checkout"
+                      : "Select shipping to continue"}
                 </button>
 
                 {!user ? (
