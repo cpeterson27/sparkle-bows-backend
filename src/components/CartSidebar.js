@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
@@ -20,6 +20,31 @@ import api from "../api/axios.config";
 import { trackBeginCheckout } from "../lib/analytics";
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+const DEFAULT_SHIPPING_POLICY =
+  "Free U.S. shipping on orders over $50. International shipping is calculated at checkout.";
+const DEFAULT_SAFETY_WARNING =
+  "WARNING: Contains small parts. Not intended for children under 3. Use with adult supervision. Remove before sleeping.";
+
+function formatCurrency(value) {
+  return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function ShippingRatePrice({ rate }) {
+  if (rate?.freeShipping) {
+    return (
+      <span className="text-right">
+        {Number(rate.actualAmount || 0) > 0 ? (
+          <span className="mr-2 text-xs font-medium text-slate-400 line-through">
+            {formatCurrency(rate.actualAmount)}
+          </span>
+        ) : null}
+        <span className="font-semibold text-emerald-600">FREE</span>
+      </span>
+    );
+  }
+
+  return <span>{formatCurrency(rate?.amount)}</span>;
+}
 
 export default function CartSidebar({
   cart,
@@ -44,6 +69,8 @@ export default function CartSidebar({
   const [selectedShippingRate, setSelectedShippingRate] = useState(null);
   const [ratesLoading, setRatesLoading] = useState(false);
   const [ratesSubtotal, setRatesSubtotal] = useState(null);
+  const [shippingPolicy, setShippingPolicy] = useState(DEFAULT_SHIPPING_POLICY);
+  const [safetyWarning, setSafetyWarning] = useState(DEFAULT_SAFETY_WARNING);
   const [shippingForm, setShippingForm] = useState({
     name: user?.name || "",
     line1: "",
@@ -73,6 +100,22 @@ export default function CartSidebar({
         .join("|"),
     [validCartItems],
   );
+  const addressRateSignature = useMemo(
+    () =>
+      [
+        shippingForm.name,
+        shippingForm.line1,
+        shippingForm.line2,
+        shippingForm.city,
+        shippingForm.state,
+        shippingForm.postalCode,
+        shippingForm.country,
+        shippingForm.phone,
+      ]
+        .map((value) => String(value || "").trim().toUpperCase())
+        .join("|"),
+    [shippingForm],
+  );
 
   useEffect(() => {
     setShippingForm({
@@ -87,11 +130,7 @@ export default function CartSidebar({
     });
   }, [defaultAddress, user?.name, user?.phone]);
 
-  useEffect(() => {
-    clearShippingRates();
-  }, [cartRateSignature]);
-
-  const clearShippingRates = () => {
+  const clearShippingRates = useCallback(() => {
     setShippingRates([]);
     setSelectedShippingRate(null);
     setRatesSubtotal(null);
@@ -99,14 +138,18 @@ export default function CartSidebar({
     setClientSecret(null);
     setOrderId(null);
     setShowPayment(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    clearShippingRates();
+  }, [cartRateSignature, clearShippingRates]);
 
   const updateShippingField = (field, value) => {
     clearShippingRates();
     setShippingForm((current) => ({ ...current, [field]: value }));
   };
 
-  const buildShippingInfo = () => ({
+  const buildShippingInfo = useCallback(() => ({
     name: shippingForm.name.trim(),
     line1: shippingForm.line1.trim(),
     line2: shippingForm.line2.trim(),
@@ -115,9 +158,9 @@ export default function CartSidebar({
     postalCode: shippingForm.postalCode.trim(),
     country: (shippingForm.country || "US").trim().toUpperCase(),
     phone: shippingForm.phone.trim(),
-  });
+  }), [shippingForm]);
 
-  const validateCheckoutDetails = () => {
+  const validateCheckoutDetails = useCallback(() => {
     const country = (shippingForm.country || "US").trim().toUpperCase();
 
     if (!user) {
@@ -143,14 +186,19 @@ export default function CartSidebar({
     }
 
     return "";
-  };
+  }, [shippingForm, user]);
 
-  const handleLoadShippingRates = async () => {
-    setError("");
+  const canQuoteShipping = useCallback(() =>
+    user &&
+    validCartItems.length > 0 &&
+    !validateCheckoutDetails(), [user, validCartItems.length, validateCheckoutDetails]);
+
+  const handleLoadShippingRates = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setError("");
     const validationError = validateCheckoutDetails();
 
     if (validationError) {
-      setError(validationError);
+      if (!silent) setError(validationError);
       return;
     }
 
@@ -173,6 +221,8 @@ export default function CartSidebar({
       setShippingRates(rates);
       setSelectedShippingRate(rates[0]);
       setRatesSubtotal(Number(res.data?.subtotal || cartTotal));
+      setShippingPolicy(res.data?.shippingPolicy || DEFAULT_SHIPPING_POLICY);
+      setSafetyWarning(res.data?.safetyWarning || DEFAULT_SAFETY_WARNING);
     } catch (ratesError) {
       console.error("Shipping rates error:", ratesError);
       setError(
@@ -182,7 +232,31 @@ export default function CartSidebar({
     } finally {
       setRatesLoading(false);
     }
-  };
+  }, [
+    buildShippingInfo,
+    cartTotal,
+    clearShippingRates,
+    user?.email,
+    user?.name,
+    validateCheckoutDetails,
+  ]);
+
+  useEffect(() => {
+    if (showPayment || !canQuoteShipping()) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      handleLoadShippingRates({ silent: true });
+    }, 800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    addressRateSignature,
+    cartRateSignature,
+    canQuoteShipping,
+    handleLoadShippingRates,
+    showPayment,
+    user?.email,
+  ]);
 
   const handleCheckout = async () => {
     setLoading(true);
@@ -231,7 +305,11 @@ export default function CartSidebar({
         tax: Number(res.data.tax || 0),
         total: Number(res.data.total || estimatedTotal),
         shippingRate: res.data.shippingRate || selectedShippingRate,
+        shippingPolicy: res.data.shippingPolicy || shippingPolicy,
+        safetyWarning: res.data.safetyWarning || safetyWarning,
       });
+      setShippingPolicy(res.data.shippingPolicy || shippingPolicy);
+      setSafetyWarning(res.data.safetyWarning || safetyWarning);
       setShowPayment(true);
     } catch (checkoutError) {
       console.error("Checkout error:", checkoutError);
@@ -328,15 +406,19 @@ export default function CartSidebar({
                   <div className="mt-5 space-y-3 text-sm text-slate-600">
                     <div className="flex items-center justify-between">
                       <span>Subtotal</span>
-                      <span>${checkoutTotals.subtotal.toFixed(2)}</span>
+                      <span>{formatCurrency(checkoutTotals.subtotal)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Shipping</span>
                       <span className="text-right">
                         <span className="block">
-                          {checkoutTotals.shippingCost === 0
-                            ? "Free"
-                            : `$${checkoutTotals.shippingCost.toFixed(2)}`}
+                          <ShippingRatePrice
+                            rate={
+                              checkoutTotals.shippingRate || {
+                                amount: checkoutTotals.shippingCost,
+                              }
+                            }
+                          />
                         </span>
                         {checkoutTotals.shippingRate ? (
                           <span className="block text-xs text-slate-400">
@@ -348,13 +430,19 @@ export default function CartSidebar({
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Sales tax</span>
-                      <span>${checkoutTotals.tax.toFixed(2)}</span>
+                      <span>{formatCurrency(checkoutTotals.tax)}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-950">
                       <span>Total due</span>
-                      <span>${checkoutTotals.total.toFixed(2)}</span>
+                      <span>{formatCurrency(checkoutTotals.total)}</span>
                     </div>
                   </div>
+                  <p className="mt-4 text-xs leading-6 text-slate-500">
+                    {checkoutTotals.shippingPolicy || shippingPolicy}
+                  </p>
+                  <p className="mt-2 text-xs leading-6 text-slate-500">
+                    {checkoutTotals.safetyWarning || safetyWarning}
+                  </p>
                 </div>
               ) : null}
 
@@ -611,7 +699,7 @@ export default function CartSidebar({
                             </span>
                           </span>
                           <span className="text-sm font-semibold text-slate-950">
-                            ${Number(rate.amount || 0).toFixed(2)}
+                            <ShippingRatePrice rate={rate} />
                           </span>
                         </label>
                       );
@@ -704,7 +792,7 @@ export default function CartSidebar({
                 <div className="mt-5 space-y-3 text-sm text-slate-600">
                   <div className="flex items-center justify-between">
                     <span>Subtotal</span>
-                    <span>${Number(ratesSubtotal || cartTotal).toFixed(2)}</span>
+                    <span>{formatCurrency(ratesSubtotal || cartTotal)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Shipping</span>
@@ -712,7 +800,7 @@ export default function CartSidebar({
                       {selectedShippingRate ? (
                         <>
                           <span className="block">
-                            ${selectedShippingAmount.toFixed(2)}
+                            <ShippingRatePrice rate={selectedShippingRate} />
                           </span>
                           <span className="block text-xs text-slate-400">
                             {selectedShippingRate.provider}{" "}
@@ -732,10 +820,15 @@ export default function CartSidebar({
                     <span>Total before tax</span>
                     <span>
                       {selectedShippingRate
-                        ? `$${estimatedTotal.toFixed(2)}`
-                        : `$${cartTotal.toFixed(2)}`}
+                        ? formatCurrency(estimatedTotal)
+                        : formatCurrency(cartTotal)}
                     </span>
                   </div>
+                </div>
+
+                <div className="mt-5 space-y-2 rounded-2xl bg-slate-50 px-4 py-4 text-xs leading-6 text-slate-500">
+                  <p>{shippingPolicy}</p>
+                  <p>{safetyWarning}</p>
                 </div>
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-3">

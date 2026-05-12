@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  AlertTriangle,
   CheckCircle2,
   Minus,
   Plus,
@@ -18,6 +19,9 @@ import { trackViewItem } from "../lib/analytics";
 function formatPrice(price) {
   return `$${Number(price || 0).toFixed(2)}`;
 }
+
+const DEFAULT_SAFETY_WARNING =
+  "WARNING: Contains small parts. Not intended for children under 3. Use with adult supervision. Remove before sleeping.";
 
 function formatReviewDate(value) {
   if (!value) return "Recently";
@@ -92,6 +96,7 @@ export default function ProductPage({
       reviewCount
     : 0;
   const inStock = Number(product.inventory || 0) > 0;
+  const safetyWarning = product.safetyWarning || DEFAULT_SAFETY_WARNING;
 
   const handleAddToCart = () => {
     if (!inStock) return;
@@ -324,6 +329,11 @@ export default function ProductPage({
                 <ShoppingBag className="h-5 w-5" />
                 {inStock ? `Add ${quantity} to cart` : "Sold out"}
               </button>
+
+              <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <p>{safetyWarning}</p>
+              </div>
             </div>
           </div>
         </div>
