@@ -66,6 +66,7 @@ const orderSchema = new mongoose.Schema(
       state: { type: String, default: "" },
       postalCode: { type: String, default: "" },
       country: { type: String, default: "US" },
+      phone: { type: String, default: "" },
     },
 
     // ✅ NEW FIELDS - Gift Options

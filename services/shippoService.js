@@ -52,8 +52,13 @@ function buildFromAddress() {
 function buildToAddress(order) {
   const address = order.shippingAddress || {};
 
-  if (!address.line1 || !address.city || !address.state || !address.postalCode) {
+  if (!address.line1 || !address.city || !address.postalCode) {
     throw new Error("Order is missing a complete shipping address.");
+  }
+
+  const country = String(address.country || "US").trim().toUpperCase();
+  if ((country === "US" || country === "CA") && !address.state) {
+    throw new Error("Order is missing a state or province for the shipping address.");
   }
 
   return {
@@ -62,9 +67,10 @@ function buildToAddress(order) {
     street1: address.line1,
     street2: address.line2 || "",
     city: address.city,
-    state: address.state,
+    state: address.state || "",
     zip: address.postalCode,
-    country: address.country || "US",
+    country,
+    phone: address.phone || order.customerPhone || undefined,
     email: order.customerEmail || undefined,
   };
 }
@@ -88,15 +94,35 @@ function buildParcel(order) {
   };
 }
 
-async function createShipment(order) {
+function isInternationalShipment(order) {
+  const fromCountry = String(process.env.SHIPPO_FROM_COUNTRY || "US").trim().toUpperCase();
+  const toCountry = String(order.shippingAddress?.country || "US").trim().toUpperCase();
+  return Boolean(toCountry && toCountry !== fromCountry);
+}
+
+async function createCustomsDeclaration(order) {
+  const items = (order.items || []).map((item) => ({
+    description: String(item.name || "Hair bow").slice(0, 95),
+    quantity: Number(item.quantity || 1),
+    net_weight: String(getEnvNumber("SHIPPO_PER_ITEM_WEIGHT_OZ", 1.5)),
+    mass_unit: "oz",
+    value_amount: String(Number(item.price || 0).toFixed(2)),
+    value_currency: "USD",
+    tariff_number: (process.env.SHIPPO_CUSTOMS_TARIFF_NUMBER || "").trim(),
+    origin_country: (process.env.SHIPPO_CUSTOMS_ORIGIN_COUNTRY || "US").trim().toUpperCase(),
+  }));
+
   const response = await axios.post(
-    `${SHIPPO_API_BASE}/shipments`,
+    `${SHIPPO_API_BASE}/customs/declarations/`,
     {
-      address_from: buildFromAddress(),
-      address_to: buildToAddress(order),
-      parcels: [buildParcel(order)],
-      async: false,
-      metadata: `Order ${order._id}`,
+      contents_type: "MERCHANDISE",
+      non_delivery_option: "RETURN",
+      certify: true,
+      certify_signer: (process.env.SHIPPO_CUSTOMS_CERTIFY_SIGNER || process.env.SHIPPO_FROM_NAME || "Sparkle Bows").trim(),
+      incoterm: (process.env.SHIPPO_CUSTOMS_INCOTERM || "DDU").trim().toUpperCase(),
+      eel_pfc: (process.env.SHIPPO_CUSTOMS_EEL_PFC || "NOEEI_30_37_a").trim(),
+      items,
+      metadata: order._id ? `Order ${order._id}` : "Checkout quote",
     },
     { headers: getShippoHeaders() },
   );
@@ -104,18 +130,117 @@ async function createShipment(order) {
   return response.data;
 }
 
-function selectBestRate(shipment) {
+async function createShipment(order) {
+  const payload = {
+    address_from: buildFromAddress(),
+    address_to: buildToAddress(order),
+    parcels: [buildParcel(order)],
+    async: false,
+    metadata: order._id ? `Order ${order._id}` : "Checkout quote",
+  };
+
+  if (isInternationalShipment(order)) {
+    const customsDeclaration = await createCustomsDeclaration(order);
+    payload.customs_declaration = customsDeclaration.object_id;
+  }
+
+  const response = await axios.post(
+    `${SHIPPO_API_BASE}/shipments/`,
+    payload,
+    { headers: getShippoHeaders() },
+  );
+
+  return response.data;
+}
+
+function rateHasErrors(rate) {
+  return Array.isArray(rate.messages) && rate.messages.length > 0;
+}
+
+function buildRateKey(rate) {
+  return [
+    rate.provider || "",
+    rate.servicelevel?.token || rate.servicelevel?.name || "",
+    Number(rate.amount || 0).toFixed(2),
+    String(rate.currency || "USD").toUpperCase(),
+  ].join("|");
+}
+
+function formatRate(rate, shipmentId) {
+  return {
+    id: rate.object_id,
+    shipmentId: shipmentId || rate.shipment || "",
+    rateKey: buildRateKey(rate),
+    provider: rate.provider || "Carrier",
+    service: rate.servicelevel?.name || rate.servicelevel?.token || "Shipping",
+    serviceToken: rate.servicelevel?.token || "",
+    amount: Number(rate.amount || 0),
+    currency: String(rate.currency || "USD").toUpperCase(),
+    estimatedDays: rate.estimated_days ?? rate.days ?? null,
+    durationTerms: rate.duration_terms || "",
+    attributes: Array.isArray(rate.attributes) ? rate.attributes : [],
+  };
+}
+
+function getUsableRates(shipment) {
   const rates = Array.isArray(shipment.rates) ? shipment.rates : [];
   if (!rates.length) {
     throw new Error("Shippo returned no rates for this order.");
   }
 
-  const validRates = rates.filter((rate) => !rate.messages?.length);
-  const candidateRates = validRates.length ? validRates : rates;
+  const validRates = rates.filter(
+    (rate) =>
+      !rateHasErrors(rate) &&
+      String(rate.currency || "").toUpperCase() === "USD" &&
+      Number.isFinite(Number(rate.amount)),
+  );
 
-  return [...candidateRates].sort(
-    (a, b) => Number(a.amount || 0) - Number(b.amount || 0),
-  )[0];
+  if (!validRates.length) {
+    throw new Error("Shippo did not return any usable USD shipping rates.");
+  }
+
+  return validRates.sort((a, b) => Number(a.amount || 0) - Number(b.amount || 0));
+}
+
+function selectBestRate(shipment) {
+  return getUsableRates(shipment)[0];
+}
+
+async function getRatesForOrder(order) {
+  const shipment = await createShipment(order);
+  const rates = getUsableRates(shipment).map((rate) =>
+    formatRate(rate, shipment.object_id),
+  );
+
+  return {
+    shipmentId: shipment.object_id,
+    rates,
+    rawRates: getUsableRates(shipment),
+  };
+}
+
+async function selectCheckoutRate(order, selectedRate) {
+  const { shipmentId, rates, rawRates } = await getRatesForOrder(order);
+  const selectedId = selectedRate?.id || selectedRate?.rateId;
+  const selectedKey = selectedRate?.rateKey;
+  const rawRate = rawRates.find(
+    (rate) =>
+      (selectedKey && buildRateKey(rate) === selectedKey) ||
+      (selectedId && rate.object_id === selectedId),
+  );
+
+  if (!rawRate) {
+    const err = new Error("Selected shipping option is no longer available. Please refresh shipping rates.");
+    err.status = 400;
+    throw err;
+  }
+
+  return {
+    shipmentId,
+    rate: formatRate(rawRate, shipmentId),
+    rawRate,
+    rates,
+  };
 }
 
 async function purchaseLabel(rateId, orderId) {
@@ -134,8 +259,21 @@ async function purchaseLabel(rateId, orderId) {
 }
 
 async function buyLabelForOrder(order) {
-  const shipment = await createShipment(order);
-  const rate = selectBestRate(shipment);
+  let shipment;
+  let rate;
+
+  if (order.shippoRateId) {
+    const response = await axios.get(
+      `${SHIPPO_API_BASE}/rates/${order.shippoRateId}`,
+      { headers: getShippoHeaders() },
+    );
+    rate = response.data;
+    shipment = { object_id: rate.shipment || order.shippoShipmentId || "" };
+  } else {
+    shipment = await createShipment(order);
+    rate = selectBestRate(shipment);
+  }
+
   const transaction = await purchaseLabel(rate.object_id, order._id);
 
   if (transaction.status !== "SUCCESS") {
@@ -156,4 +294,6 @@ async function buyLabelForOrder(order) {
 
 module.exports = {
   buyLabelForOrder,
+  getRatesForOrder,
+  selectCheckoutRate,
 };
