@@ -4,4 +4,4 @@ node_modules/
 .env.production
 coverage/
 logs/
-frontend/build/
+client/build/
